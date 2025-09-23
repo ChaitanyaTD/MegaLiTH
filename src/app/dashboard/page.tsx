@@ -2,7 +2,7 @@
 
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import KiltBalance from "@/components/KiltBalance";
 import TaskButtons from "./TaskButtons";
@@ -11,16 +11,20 @@ import { useProgress } from "@/hooks/useProgress";
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
   const router = useRouter();
-  const { upsert } = useProgress();
+  const { data, isFetched, upsert } = useProgress();
+  const didInitRef = useRef(false);
 
   useEffect(() => {
     if (!isConnected) {
       router.replace("/");
       return;
     }
-    // Ensure a record exists on connect
-    upsert.mutate({});
-  }, [isConnected, router, upsert]);
+    if (!didInitRef.current && isFetched && !data && !upsert.isPending) {
+      didInitRef.current = true;
+      upsert.mutate({});
+    }
+
+  }, [isConnected, router, isFetched, data, upsert.isPending]);
 
   return (
     <div className="min-h-screen bg-[#2f3538] text-white px-6 py-10">
@@ -63,5 +67,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-

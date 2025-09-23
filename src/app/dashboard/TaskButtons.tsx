@@ -21,7 +21,7 @@ function Btn({ state, onClick, children }: { state: number; onClick?: () => void
 
 export default function TaskButtons() {
   const { address } = useAccount();
-  const { data, upsert, isLoading } = useProgress();
+  const { data, upsert } = useProgress();
 
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;

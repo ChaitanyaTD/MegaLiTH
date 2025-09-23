@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -17,5 +17,3 @@ model UserProgress {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
-
-

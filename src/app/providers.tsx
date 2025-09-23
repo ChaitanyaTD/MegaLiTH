@@ -23,7 +23,6 @@ const queryClient = new QueryClient();
 export default function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_WALLETCONNECT_ID || process.env.NEXT_PUBLIC_WALLETCONNECT_ID === "demo") {
-      // eslint-disable-next-line no-console
       console.warn("Using demo WalletConnect projectId. Set NEXT_PUBLIC_WALLETCONNECT_ID in .env.local for production.");
     }
   }, []);
