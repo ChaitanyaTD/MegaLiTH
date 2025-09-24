@@ -7,9 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id         Int            @id @default(autoincrement())
+  address    String         @unique
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  progress   UserProgress?
+}
+
 model UserProgress {
   id           Int      @id @default(autoincrement())
-  address      String   @unique
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   xState       Int      @default(1) // 0=greyed, 1=clickable, 2=complete
   tgState      Int      @default(0)
   refState     Int      @default(0)

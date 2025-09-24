@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
 
 export type ProgressRecord = {
@@ -18,6 +18,8 @@ export type TaskState = 0 | 1 | 2;
 
 export function useProgress() {
   const { address } = useAccount();
+  const qc = useQueryClient();
+
   const q = useQuery({
     queryKey: ["progress", address],
     queryFn: async () => {
@@ -45,7 +47,10 @@ export function useProgress() {
       });
       return res.json();
     },
-    // We poll every 60s; avoid immediate invalidation to prevent loops
+    onSuccess: (data) => {
+      // Update cache immediately so button states reflect without waiting for poll
+      qc.setQueryData(["progress", address], data as ProgressRecord);
+    },
   });
 
   return { ...q, upsert };

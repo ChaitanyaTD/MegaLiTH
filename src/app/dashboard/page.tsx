@@ -2,7 +2,7 @@
 
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import KiltBalance from "@/components/KiltBalance";
 import TaskButtons from "./TaskButtons";
@@ -11,20 +11,36 @@ import { useProgress } from "@/hooks/useProgress";
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
   const router = useRouter();
-  const { data, isFetched, upsert } = useProgress();
+  const { data, isFetched } = useProgress();
   const didInitRef = useRef(false);
+  const [userReady, setUserReady] = useState(false);
 
   useEffect(() => {
     if (!isConnected) {
       router.replace("/");
       return;
     }
-    if (!didInitRef.current && isFetched && !data && !upsert.isPending) {
+    if (!didInitRef.current && isFetched) {
       didInitRef.current = true;
-      upsert.mutate({});
+      // Check if user exists first; only create if missing
+      fetch(`/api/user?address=${address}`)
+        .then(async (r) => (r.ok ? r.json() : null))
+        .then(async (existing) => {
+          if (existing?.id) {
+            setUserReady(true);
+            return;
+          }
+          const r = await fetch("/api/user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address }),
+          });
+          if (r.ok) setUserReady(true);
+        })
+        .catch(() => {});
     }
 
-  }, [isConnected, router, isFetched, data, upsert.isPending]);
+  }, [isConnected, router, isFetched, data, address]);
 
   return (
     <div className="min-h-screen bg-[#2f3538] text-white px-6 py-10">
@@ -55,7 +71,7 @@ export default function Dashboard() {
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold">Alliance Drop</h2>
-          <TaskButtons />
+          <TaskButtons disabled={!userReady} />
           <div className="mt-10">
             <p className="text-xl font-semibold">Your unique referral link:</p>
             <div className="mt-4">
