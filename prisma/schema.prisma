@@ -20,10 +20,13 @@ model UserProgress {
   id           Int      @id @default(autoincrement())
   userId       Int      @unique
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  xState       Int      @default(1) // 0=greyed, 1=clickable, 2=complete
+  xState       Int      @default(1)
   tgState      Int      @default(0)
   refState     Int      @default(0)
   referralCode String?
+  twitterId    String?  @unique
+  telegramId   Int?     @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
