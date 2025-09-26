@@ -3,7 +3,13 @@ import { createHash, randomBytes, createHmac, randomUUID } from "crypto";
 
 const STATE_SECRET = process.env.STATE_SECRET || "default-secret";
 
-function signState(payload: any) {
+type AuthStatePayload = {
+  uuid: string;
+  address: string;
+  codeVerifier: string;
+};
+
+function signState(payload: AuthStatePayload) {
   const data = JSON.stringify(payload);
   const hmac = createHmac("sha256", STATE_SECRET).update(data).digest("hex");
   return Buffer.from(JSON.stringify({ payload, sig: hmac })).toString("base64url");

@@ -54,7 +54,7 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
     throw new Error(`Twitter token exchange failed: ${res.status} ${res.statusText} — ${body}`);
   }
 
-  return res.json();
+  return res.json() as Promise<TwitterTokenResponse>;
 }
 
 export async function getTwitterUser(accessToken: string): Promise<TwitterUserResponse> {
@@ -122,7 +122,7 @@ export async function getTwitterUserBasic(accessToken: string): Promise<TwitterU
       return res.json() as Promise<TwitterUserResponse>;
     }
   } catch (error) {
-    console.warn('v2 user fetch failed, trying v1.1');
+    console.warn('v2 user fetch failed, trying v1.1', error);
   }
 
   // Fallback to v1.1 if available (requires different token type)
@@ -132,7 +132,7 @@ export async function getTwitterUserBasic(accessToken: string): Promise<TwitterU
     });
 
     if (res.ok) {
-      const userData = await res.json() as any;
+      const userData = await res.json() as { id_str: string; screen_name: string; name: string };
       return {
         data: {
           id: userData.id_str,
@@ -142,7 +142,7 @@ export async function getTwitterUserBasic(accessToken: string): Promise<TwitterU
       };
     }
   } catch (error) {
-    console.warn('v1.1 user fetch also failed');
+    console.warn('v1.1 user fetch also failed', error);
   }
 
   throw new Error('Unable to fetch Twitter user data with available API access');

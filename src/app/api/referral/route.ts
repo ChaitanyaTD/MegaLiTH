@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
   try {
     const referral = await generateReferral(address);
     return Response.json(referral);
-  } catch (error: any) {
-    return new Response(error.message || "Unable to generate referral", { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unable to generate referral";
+    return new Response(message, { status: 400 });
   }
 }

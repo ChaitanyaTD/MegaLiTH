@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
   try {
     const verified = await verifyTelegram(address, telegramUserId);
     return Response.json({ verified });
-  } catch (error: any) {
-    return new Response(error.message || "Verification failed", { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Verification failed";
+    return new Response(message, { status: 400 });
   }
 }
