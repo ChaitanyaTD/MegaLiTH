@@ -180,14 +180,18 @@ export async function GET(req: NextRequest) {
 
     return Response.redirect(redirectUrl.toString());
 
-  } catch (err: any) {
-    console.error('Twitter callback error:', err);
-    
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const redirectUrl = new URL(returnUrl, baseUrl);
-    redirectUrl.searchParams.set("twitter_result", "error");
-    redirectUrl.searchParams.set("error_message", err.message || "Unknown error occurred");
-    
-    return Response.redirect(redirectUrl.toString());
-  }
+  } catch (err: unknown) {
+  console.error('Twitter callback error:', err);
+
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const redirectUrl = new URL(returnUrl, baseUrl);
+  redirectUrl.searchParams.set("twitter_result", "error");
+  redirectUrl.searchParams.set(
+    "error_message",
+    err instanceof Error ? err.message : String(err)
+  );
+
+  return Response.redirect(redirectUrl.toString());
+}
+
 }

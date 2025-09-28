@@ -1,7 +1,7 @@
 "use client";
 
 import { useProgress } from "@/hooks/useProgress";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 
 function Btn({ 
@@ -60,33 +60,31 @@ function TwitterFollowModal({
   onFollowed: () => void;
   profileUrl?: string;
   targetUsername?: string;
-  authData?: any;
+  authData?: Record<string, unknown>;
 }) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
-  const autoCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-check functionality
   useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    const handleAutoCheck = async () => {
+      console.log("Auto-checking follow status...");
+      onFollowed();
+    };
+
     if (autoCheckEnabled && isOpen) {
       // Start checking every 3 seconds
-      autoCheckIntervalRef.current = setInterval(() => {
-        console.log("Auto-checking follow status...");
-        handleAutoCheck();
-      }, 3000);
+      interval = setInterval(handleAutoCheck, 3000);
     }
 
     return () => {
-      if (autoCheckIntervalRef.current) {
-        clearInterval(autoCheckIntervalRef.current);
+      if (interval) {
+        clearInterval(interval);
       }
     };
-  }, [autoCheckEnabled, isOpen]);
-
-  const handleAutoCheck = async () => {
-    // This would trigger the same recheck logic
-    onFollowed();
-  };
+  }, [autoCheckEnabled, isOpen, onFollowed]);
 
   const handleOpenProfile = () => {
     if (profileUrl) {
@@ -130,7 +128,7 @@ function TwitterFollowModal({
               <div className="flex items-center space-x-2">
                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-blue-700 dark:text-blue-300 text-sm">
-                  Auto-checking follow status... Follow @{targetUsername} and we'll detect it automatically!
+                    {`Auto-checking follow status... Follow @${targetUsername} and we'll detect it automatically!`}
                 </span>
               </div>
             </div>
@@ -171,10 +169,10 @@ function TwitterFollowModal({
             </button>
           </div>
           
-          {authData?.apiError && (
+          {Boolean(authData?.apiError) && (
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
               <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                <strong>Note:</strong> Automatic verification failed ({authData.apiError}). Please follow manually and click "I Followed Them".
+                <strong>Note:</strong> Automatic verification failed ({String(authData?.apiError)}). Please follow manually and click &quot;I Followed Them&quot;.
               </p>
             </div>
           )}
@@ -192,7 +190,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     isOpen: boolean;
     profileUrl?: string;
     targetUsername?: string;
-    authData?: any;
+    authData?: Record<string, unknown>;
   }>({ isOpen: false });
 
   // State meanings:
@@ -209,8 +207,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     const checkTwitterCallback = () => {
       const urlParams = new URLSearchParams(window.location.search);
       const twitterResult = urlParams.get('twitter_result');
-      const isFollowing = urlParams.get('is_following');
-      const needsFollow = urlParams.get('needs_follow');
       const username = urlParams.get('username');
       const targetUsername = urlParams.get('target_username');
       const profileUrl = urlParams.get('profile_url');
@@ -387,7 +383,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     // Wait a moment for the follow to register, then recheck
     setTimeout(() => {
       handleTwitterRecheck();
-    }, 20000);
+    }, 2000);
   };
 
   const handleJoinTG = async () => {

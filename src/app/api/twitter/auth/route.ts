@@ -132,14 +132,16 @@ export async function GET(req: NextRequest) {
       }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Auth route error:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     return new Response(
       JSON.stringify({
         error: "Internal server error",
         message: "Failed to initiate Twitter authentication",
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
       }),
       { 
         status: 500,
