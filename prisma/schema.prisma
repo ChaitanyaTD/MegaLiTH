@@ -25,7 +25,7 @@ model UserProgress {
   refState     Int      @default(0)
   referralCode String?
   twitterId    String?  @unique
-  twitterUserId String? // Add this field to store Twitter user ID for follow checks
+  twitterUserId String? 
   telegramId   Int?     @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
