@@ -35,7 +35,7 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
   const X_CLIENT_ID = requireEnvVar("X_CLIENT_ID");
   const X_CLIENT_SECRET = requireEnvVar("X_CLIENT_SECRET");
 const X_REDIRECT_URI =
-  process.env.NODE_ENV === "production"
+  process.env.NODE_ENV === "development"
     ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
     : requireEnvVar("X_REDIRECT_URI");
 
