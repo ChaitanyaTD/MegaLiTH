@@ -269,8 +269,8 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         try {
           await upsert.mutateAsync({ xState: 2 });
           
-          // Clean URL after state update
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // // Clean URL after state update
+          // window.history.replaceState({}, document.title, window.location.pathname);
           
           // Show error toast
           toast.error(
@@ -293,7 +293,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           await upsert.mutateAsync({ xState: 3, tgState: 1 });
           
           // Clean URL after state update
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // window.history.replaceState({}, document.title, window.location.pathname);
           
           profileOpenedRef.current = false; // Reset flag
           
@@ -313,7 +313,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           await upsert.mutateAsync({ xState: 2 });
           
           // Clean URL after state update
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // window.history.replaceState({}, document.title, window.location.pathname);
           
           profileOpenedRef.current = true; // Mark that profile was opened
           
@@ -348,7 +348,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           await upsert.mutateAsync({ xState: 2 });
           
           // Clean URL after state update
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // window.history.replaceState({}, document.title, window.location.pathname);
           
           profileOpenedRef.current = true;
           
@@ -377,7 +377,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       // ===== CASE 5: Still not following after recheck =====
       if (twitterResult === 'still_not_following') {
         // Clean URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // window.history.replaceState({}, document.title, window.location.pathname);
         
         if (targetUsername) {
           if (profileUrl) {
@@ -407,7 +407,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           await upsert.mutateAsync({ xState: 2 });
           
           // Clean URL after state update
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // window.history.replaceState({}, document.title, window.location.pathname);
           
           // Show info toast
           if (toastMessage) {
@@ -422,7 +422,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       // ===== CASE 7: Error handling =====
       if (twitterResult === 'error') {
         // Clean URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // window.history.replaceState({}, document.title, window.location.pathname);
         
         console.error('Twitter auth error:', errorMessage);
         
