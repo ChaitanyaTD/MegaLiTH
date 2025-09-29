@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
     );
 
     // 6️⃣ Build redirect URL with appropriate result
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXTAUTH_URL;
     const redirectUrl = new URL(returnUrl, baseUrl);
     
     if (followResult.isFollowing) {
