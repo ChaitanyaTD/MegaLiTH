@@ -9,25 +9,24 @@ datasource db {
 }
 
 model User {
-  id         Int            @id @default(autoincrement())
-  address    String         @unique
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  progress   UserProgress?
+  id        Int           @id @default(autoincrement())
+  address   String        @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  progress  UserProgress?
 }
 
 model UserProgress {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  xState       Int      @default(1)
-  tgState      Int      @default(0)
-  refState     Int      @default(0)
-  referralCode String?
-  twitterId    String?  @unique
-  twitterUserId String? 
-  telegramId   Int?     @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xState        Int      @default(1)
+  tgState       Int      @default(0)
+  refState      Int      @default(0)
+  referralCode  String?
+  twitterId     String?  @unique
+  twitterUserId String?
+  telegramId    Int?     @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
-

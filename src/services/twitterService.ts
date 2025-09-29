@@ -235,7 +235,6 @@ export async function verifyFollowByTweet(accessToken: string, twitterUserId: st
 }
 
 // --- Update progress in DB (with twitterUserId) ---
-// --- Update progress in DB (with twitterUserId) ---
 export async function updateTwitterProgress(
   address: string,
   twitterUsername: string,
