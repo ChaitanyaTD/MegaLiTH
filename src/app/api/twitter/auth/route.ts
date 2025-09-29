@@ -18,66 +18,75 @@ function signState(payload: AuthStatePayload) {
   return Buffer.from(JSON.stringify({ payload, sig: hmac })).toString("base64url");
 }
 
-// Dynamically choose redirect URI based on environment
-function getRedirectUri() {
-  if (process.env.NODE_ENV === "production") {
-    // Vercel automatically provides VERCEL_URL for production deployments
-    const domain = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-    if (!domain) {
-      throw new Error("Missing VERCEL_URL in production environment");
-    }
-    return `https://${domain}/api/twitter/callback`;
-  }
-
-  // Development: use env var or fallback to localhost
-  return process.env.X_REDIRECT_URI || "http://localhost:3000/api/twitter/callback";
-}
-
 export async function GET(req: NextRequest) {
   try {
-    // ✅ Load environment variables
+    // Dynamically pick redirect URI: Vercel URL in production, ngrok/local in dev
     const X_CLIENT_ID = process.env.X_CLIENT_ID;
-    const redirectUri = getRedirectUri();
+    const X_REDIRECT_URI =
+      process.env.NODE_ENV === "production"
+        ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
+        : process.env.X_REDIRECT_URI;
+
     const TARGET_TWITTER_ID = process.env.TARGET_TWITTER_ID;
     const TARGET_TWITTER_USERNAME = process.env.TARGET_TWITTER_USERNAME;
 
-    if (!X_CLIENT_ID || !redirectUri || !TARGET_TWITTER_ID) {
+    if (!X_CLIENT_ID || !X_REDIRECT_URI || !TARGET_TWITTER_ID) {
       console.error("Missing required environment variables:", {
         X_CLIENT_ID: !!X_CLIENT_ID,
-        redirectUri,
+        X_REDIRECT_URI: !!X_REDIRECT_URI,
         TARGET_TWITTER_ID: !!TARGET_TWITTER_ID,
-        TARGET_TWITTER_USERNAME: !!TARGET_TWITTER_USERNAME
+        TARGET_TWITTER_USERNAME: !!TARGET_TWITTER_USERNAME,
+        VERCEL_URL: process.env.VERCEL_URL,
+        NODE_ENV: process.env.NODE_ENV,
       });
       return new Response(
         JSON.stringify({
           error: "Server configuration error",
-          message: "Twitter integration is not properly configured"
+          message: "Twitter integration is not properly configured",
         }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    // ✅ Parse query params
     const address = req.nextUrl.searchParams.get("address");
     const returnUrl = req.nextUrl.searchParams.get("returnUrl") || "/dashboard";
     const recheck = req.nextUrl.searchParams.get("recheck") === "true";
 
-    if (!address || address.length < 10) {
+    if (!address) {
+      return new Response(
+        JSON.stringify({
+          error: "Missing parameter",
+          message: "Wallet address is required",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Basic address format validation
+    if (typeof address !== "string" || address.length < 10) {
       return new Response(
         JSON.stringify({
           error: "Invalid parameter",
-          message: "Valid wallet address is required"
+          message: "Invalid wallet address format",
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
     console.log(
-      `🔑 Initiating Twitter auth for address: ${address}${recheck ? " (recheck)" : ""}`
+      `Initiating Twitter auth for address: ${address}${recheck ? " (recheck)" : ""}`
     );
-    console.log(`🌐 Using redirect URI: ${redirectUri}`);
 
-    // ✅ Generate PKCE code verifier & challenge
+    // PKCE code verifier & challenge
     const codeVerifier = randomBytes(64).toString("base64url");
     const hash = createHash("sha256").update(codeVerifier).digest();
     const codeChallenge = Buffer.from(hash)
@@ -86,53 +95,70 @@ export async function GET(req: NextRequest) {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    // ✅ Build state payload
     const payload: AuthStatePayload = {
       uuid: randomUUID(),
       address,
       codeVerifier,
       returnUrl,
       recheck,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     const STATE = signState(payload);
 
-    // ✅ Build Twitter OAuth URL
+    // Build Twitter OAuth 2.0 URL
     const url = new URL("https://twitter.com/i/oauth2/authorize");
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", X_CLIENT_ID);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("scope", ["tweet.read", "users.read", "follows.read", "offline.access"].join(" "));
+    url.searchParams.set("redirect_uri", X_REDIRECT_URI);
+
+    // Request comprehensive scopes
+    const scopes = [
+      "tweet.read",
+      "users.read",
+      "follows.read",
+      "follows.write",
+      "offline.access",
+    ];
+    url.searchParams.set("scope", scopes.join(" "));
     url.searchParams.set("state", STATE);
     url.searchParams.set("code_challenge", codeChallenge);
     url.searchParams.set("code_challenge_method", "S256");
 
-    console.log(`✅ OAuth URL generated successfully`);
+    console.log(
+      `Generated OAuth URL for ${recheck ? "recheck" : "initial auth"}:`,
+      url.toString()
+    );
 
     return new Response(
       JSON.stringify({
         ok: true,
         url: url.toString(),
-        message: `Authorization URL generated successfully${recheck ? " (recheck)" : ""}`,
-        recheck
+        message: `Authorization URL generated successfully${
+          recheck ? " (recheck)" : ""
+        }`,
+        recheck,
       }),
-      { headers: { "Content-Type": "application/json" }, status: 200 }
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }
     );
   } catch (error: unknown) {
-    console.error("❌ Auth route error:", error);
+    console.error("Auth route error:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
     return new Response(
       JSON.stringify({
         error: "Internal server error",
         message: "Failed to initiate Twitter authentication",
-        details:
-          process.env.NODE_ENV === "development"
-            ? error instanceof Error
-              ? error.message
-              : String(error)
-            : undefined
+        details: process.env.NODE_ENV === "development" ? errorMessage : undefined,
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 }
