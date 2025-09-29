@@ -235,6 +235,7 @@ export async function verifyFollowByTweet(accessToken: string, twitterUserId: st
 }
 
 // --- Update progress in DB (with twitterUserId) ---
+// --- Update progress in DB (with twitterUserId) ---
 export async function updateTwitterProgress(
   address: string,
   twitterUsername: string,
@@ -244,18 +245,26 @@ export async function updateTwitterProgress(
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
 
+  const updateData: {
+    xState: number;
+    twitterId: string;
+    twitterUserId?: string;
+  } = {
+    xState: isFollowing ? 3 : 2,
+    twitterId: twitterUsername,
+  };
+
+  // Only include twitterUserId if it's provided
+  if (twitterUserId) {
+    updateData.twitterUserId = twitterUserId;
+  }
+
   return prisma.userProgress.upsert({
     where: { userId: user.id },
-    update: {
-      xState: isFollowing ? 3 : 2,
-      twitterId: twitterUsername,
-      twitterUserId: twitterUserId ?? undefined,
-    },
+    update: updateData,
     create: {
       userId: user.id,
-      xState: isFollowing ? 3 : 2,
-      twitterId: twitterUsername,
-      twitterUserId: twitterUserId ?? undefined,
+      ...updateData,
     },
   });
 }
