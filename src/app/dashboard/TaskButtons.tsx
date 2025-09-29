@@ -28,9 +28,9 @@ function Btn({
         completed
           ? "bg-green-700 text-white"
           : authenticated
-          ? "bg-blue-600 text-white hover:bg-blue-700"
+          ? "bg-green-700 text-white"
           : initial
-          ? "bg-[#1f2326] hover:bg-[#262a2d] text-white"
+          ? "btn-primary"
           : disabled
           ? "bg-[#101214] opacity-50 cursor-not-allowed text-gray-400"
           : "bg-[#1f2326] hover:bg-[#262a2d] text-white"
