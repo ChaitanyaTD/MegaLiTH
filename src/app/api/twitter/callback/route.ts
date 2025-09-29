@@ -128,17 +128,28 @@ export async function GET(req: NextRequest) {
     
     // ===== CRITICAL: Handle self-follow case =====
     // User cannot follow themselves, so we mark as "not following" (state 2)
-    // and enable Telegram button by NOT setting xState to 3
+    // Do NOT enable Telegram button (tgState stays at current value, not changed to 1)
     const finalState = isSelfFollow ? 2 : (followResult.isFollowing ? 3 : 2);
     
-    await updateTwitterProgress(
-      address, 
-      twitterUsername, 
-      twitterUserId,
-      followResult.isFollowing && !isSelfFollow // Only mark as following if not self-follow
-    );
+    // Only update follow status if NOT self-follow
+    if (!isSelfFollow) {
+      await updateTwitterProgress(
+        address, 
+        twitterUsername, 
+        twitterUserId,
+        followResult.isFollowing
+      );
+    } else {
+      // For self-follow, only update Twitter info without changing follow status
+      await updateTwitterProgress(
+        address, 
+        twitterUsername, 
+        twitterUserId,
+        false // Explicitly set to not following
+      );
+    }
 
-    console.log(`💾 Updated progress: state=${finalState}, following=${followResult.isFollowing && !isSelfFollow}`);
+    console.log(`💾 Updated progress: state=${finalState}, following=${followResult.isFollowing && !isSelfFollow}, selfFollow=${isSelfFollow}`);
 
     // ===== FLOW STEP 6: Build redirect URL with result parameters =====
     const redirectUrl = new URL(returnUrl, baseUrl);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useProgress } from "@/hooks/useProgress";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 
@@ -31,7 +31,7 @@ function Btn({
         completed
           ? "bg-green-700 text-white"
           : authenticated
-          ? "bg-green-700 text-white"
+          ? "bg-yellow-600 text-white"
           : initial
           ? "btn-primary"
           : disabled
@@ -228,6 +228,13 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     authData?: Record<string, unknown>;
   }>({ isOpen: false });
 
+  // Track if we're currently in a recheck to prevent multiple simultaneous checks
+  const isRecheckingRef = useRef(false);
+  // Track the last check timestamp to debounce
+  const lastCheckTimeRef = useRef(0);
+  // Track if profile was opened (to know when to auto-check on return)
+  const profileOpenedRef = useRef(false);
+
   // ===== STATE DEFINITIONS =====
   // 0: Disabled/locked
   // 1: Available to start
@@ -240,7 +247,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   // ===== HANDLE TWITTER CALLBACK RESULTS =====
   // This processes URL parameters after Twitter OAuth redirect
   useEffect(() => {
-    const handleTwitterCallback = () => {
+    const handleTwitterCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const twitterResult = urlParams.get('twitter_result');
       const username = urlParams.get('username');
@@ -252,95 +259,127 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       
       if (!twitterResult) return;
 
-      // Clean URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // Show toast if provided
-      if (toastMessage && toastType) {
-        switch (toastType) {
-          case 'success':
-            toast.success(toastMessage, { duration: 5000 });
-            break;
-          case 'error':
-            toast.error(toastMessage, { duration: 6000 });
-            break;
-          case 'warning':
-            toast(toastMessage, { duration: 5000, icon: '⚠️' });
-            break;
-          case 'info':
-            toast(toastMessage, { duration: 4000, icon: 'ℹ️' });
-            break;
-        }
-      }
+      // DON'T clean URL parameters immediately - wait for state update
       
       // ===== CASE 1: Self-follow attempt =====
       if (twitterResult === 'self_follow') {
-        // Update to state 2 (authenticated but not following)
-        // This prevents enabling the Telegram button
-        upsert.mutateAsync({ xState: 2 });
-        // Toast already shown from callback
+        console.log('⚠️ Self-follow detected, updating state...');
+        
+        // Update state first, THEN show toast
+        try {
+          await upsert.mutateAsync({ xState: 2 });
+          
+          // Clean URL after state update
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Show error toast
+          toast.error(
+            toastMessage || `You cannot follow your own account (@${username}). Please use a different Twitter account.`,
+            { 
+              duration: 8000,
+              icon: '🚫'
+            }
+          );
+        } catch (error) {
+          console.error('Failed to update state:', error);
+          toast.error('Failed to update status. Please try again.', { duration: 5000 });
+        }
         return;
       }
       
       // ===== CASE 2: Successfully following =====
       if (twitterResult === 'success' || twitterResult === 'recheck_success') {
-        // Update to state 3 (completed) and enable Telegram button
-        upsert.mutateAsync({ xState: 3, tgState: 1 });
-        // Toast already shown from callback
+        try {
+          await upsert.mutateAsync({ xState: 3, tgState: 1 });
+          
+          // Clean URL after state update
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          profileOpenedRef.current = false; // Reset flag
+          
+          // Show success toast
+          if (toastMessage) {
+            toast.success(toastMessage, { duration: 5000 });
+          }
+        } catch (error) {
+          console.error('Failed to update state:', error);
+        }
         return;
       }
       
       // ===== CASE 3: Not following - open profile automatically =====
       if (twitterResult === 'not_following') {
-        // Update to state 2 (authenticated but not following)
-        upsert.mutateAsync({ xState: 2 });
-        
-        if (targetUsername && profileUrl) {
-          // Automatically open the profile in new tab
-          window.open(profileUrl, '_blank', 'noopener,noreferrer');
+        try {
+          await upsert.mutateAsync({ xState: 2 });
           
-          // Show modal with auto-check enabled
-          setTimeout(() => {
-            setTwitterModal({
-              isOpen: true,
-              profileUrl,
-              targetUsername,
-              authData: { needsFollow: true, autoOpen: true }
+          // Clean URL after state update
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          profileOpenedRef.current = true; // Mark that profile was opened
+          
+          if (targetUsername && profileUrl) {
+            // Automatically open the profile in new tab
+            window.open(profileUrl, '_blank', 'noopener,noreferrer');
+            
+            // Show modal with auto-check enabled
+            setTimeout(() => {
+              setTwitterModal({
+                isOpen: true,
+                profileUrl,
+                targetUsername,
+                authData: { needsFollow: true, autoOpen: true }
+              });
+            }, 500);
+            
+            toast.success(`Connected as @${username}! Follow @${targetUsername} in the opened tab.`, {
+              duration: 6000,
+              icon: '👋'
             });
-          }, 500);
-          
-          toast.success(`Connected as @${username}! Follow @${targetUsername} in the opened tab.`, {
-            duration: 6000,
-            icon: '👋'
-          });
+          }
+        } catch (error) {
+          console.error('Failed to update state:', error);
         }
         return;
       }
       
       // ===== CASE 4: Manual verification needed =====
       if (twitterResult === 'manual_check') {
-        upsert.mutateAsync({ xState: 2 });
-        
-        if (targetUsername) {
-          setTwitterModal({
-            isOpen: true,
-            profileUrl: profileUrl || undefined,
-            targetUsername,
-            authData: { 
-              needsManualCheck: true,
-              apiError: "Automatic verification unavailable"
-            }
-          });
+        try {
+          await upsert.mutateAsync({ xState: 2 });
+          
+          // Clean URL after state update
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          profileOpenedRef.current = true;
+          
+          if (targetUsername) {
+            setTwitterModal({
+              isOpen: true,
+              profileUrl: profileUrl || undefined,
+              targetUsername,
+              authData: { 
+                needsManualCheck: true,
+                apiError: "Automatic verification unavailable"
+              }
+            });
+          }
+          
+          // Show warning toast
+          if (toastMessage) {
+            toast(toastMessage, { duration: 5000, icon: '⚠️' });
+          }
+        } catch (error) {
+          console.error('Failed to update state:', error);
         }
-        // Toast already shown from callback
         return;
       }
       
       // ===== CASE 5: Still not following after recheck =====
       if (twitterResult === 'still_not_following') {
-        // Keep state at 2
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
         if (targetUsername) {
-          // Auto-open profile again
           if (profileUrl) {
             window.open(profileUrl, '_blank', 'noopener,noreferrer');
           }
@@ -354,26 +393,109 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
             });
           }, 500);
         }
-        // Toast already shown from callback
+        
+        // Show error toast
+        if (toastMessage) {
+          toast.error(toastMessage, { duration: 6000 });
+        }
         return;
       }
       
       // ===== CASE 6: Basic authentication =====
       if (twitterResult === 'authenticated') {
-        upsert.mutateAsync({ xState: 2 });
-        // Toast already shown from callback
+        try {
+          await upsert.mutateAsync({ xState: 2 });
+          
+          // Clean URL after state update
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Show info toast
+          if (toastMessage) {
+            toast(toastMessage, { duration: 4000, icon: 'ℹ️' });
+          }
+        } catch (error) {
+          console.error('Failed to update state:', error);
+        }
         return;
       }
       
       // ===== CASE 7: Error handling =====
       if (twitterResult === 'error') {
-        // Toast already shown from callback
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
         console.error('Twitter auth error:', errorMessage);
+        
+        // Show error toast
+        toast.error(
+          toastMessage || errorMessage || 'Twitter authentication failed',
+          { duration: 6000 }
+        );
       }
     };
 
     handleTwitterCallback();
   }, [upsert]);
+
+  // ===== CRITICAL: AUTO-RECHECK ON TAB FOCUS =====
+  // This solves the issue where user follows in another tab and returns
+  useEffect(() => {
+    // Only auto-check if user is in state 2 (authenticated but not following)
+    if (xState !== 2) return;
+
+    const handleVisibilityChange = () => {
+      // Check if tab became visible and profile was opened before
+      if (!document.hidden && profileOpenedRef.current) {
+        const now = Date.now();
+        const timeSinceLastCheck = now - lastCheckTimeRef.current;
+        
+        // Debounce: only check if 5 seconds passed since last check
+        if (timeSinceLastCheck > 5000 && !isRecheckingRef.current) {
+          console.log('🔄 Tab became visible, auto-checking follow status...');
+          toast.loading('Checking if you followed...', { 
+            id: 'visibility-check',
+            duration: 2000 
+          });
+          
+          // Trigger silent recheck
+          setTimeout(() => {
+            handleTwitterRecheckSilent();
+          }, 1000);
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      // Check if window gained focus and profile was opened before
+      if (profileOpenedRef.current) {
+        const now = Date.now();
+        const timeSinceLastCheck = now - lastCheckTimeRef.current;
+        
+        // Debounce: only check if 5 seconds passed since last check
+        if (timeSinceLastCheck > 5000 && !isRecheckingRef.current) {
+          console.log('🔄 Window focused, auto-checking follow status...');
+          toast.loading('Checking if you followed...', { 
+            id: 'focus-check',
+            duration: 2000 
+          });
+          
+          // Trigger silent recheck
+          setTimeout(() => {
+            handleTwitterRecheckSilent();
+          }, 1000);
+        }
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [xState]); // Re-run if xState changes
 
   // ===== INITIATE TWITTER OAUTH =====
   const handleFollowX = useCallback(async () => {
@@ -390,7 +512,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         const txt = await res.text().catch(() => "no body");
         console.error("Twitter auth request failed:", res.status, txt);
         
-        // Try to parse error message
         try {
           const errorData = JSON.parse(txt);
           toast.error(errorData.message || "Failed to start X OAuth", { duration: 5000 });
@@ -408,7 +529,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         return;
       }
       
-      // Show loading toast and redirect
       toast.loading('Redirecting to X (Twitter)...', { duration: 2000 });
       
       setTimeout(() => {
@@ -423,15 +543,17 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   }, [address, pending]);
 
-  // ===== RECHECK TWITTER FOLLOW STATUS =====
+  // ===== RECHECK TWITTER FOLLOW STATUS (with UI feedback) =====
   const handleTwitterRecheck = useCallback(async () => {
-    if (!address || pending) return;
+    if (!address || pending || isRecheckingRef.current) return;
     
+    isRecheckingRef.current = true;
+    lastCheckTimeRef.current = Date.now();
     setPending("x");
+    
     try {
       toast.loading('Verifying follow status...', { id: 'recheck' });
       
-      // Re-authenticate to check follow status
       const res = await fetch(`/api/twitter/auth?address=${address}&recheck=true`, {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -452,7 +574,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         return;
       }
       
-      // Redirect to Twitter OAuth for verification
       toast.dismiss('recheck');
       window.location.assign(payload.url);
       
@@ -461,14 +582,55 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
     } finally {
       setPending(null);
+      isRecheckingRef.current = false;
     }
   }, [address, pending]);
+
+  // ===== SILENT RECHECK (for auto-checks on tab focus) =====
+  const handleTwitterRecheckSilent = useCallback(async () => {
+    if (!address || isRecheckingRef.current) return;
+    
+    isRecheckingRef.current = true;
+    lastCheckTimeRef.current = Date.now();
+    
+    try {
+      const res = await fetch(`/api/twitter/auth?address=${address}&recheck=true`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      
+      if (!res.ok) {
+        console.error("Silent recheck failed:", res.status);
+        toast.dismiss('visibility-check');
+        toast.dismiss('focus-check');
+        return;
+      }
+      
+      const payload = await res.json();
+      
+      if (!payload?.ok || !payload?.url) {
+        console.error("Invalid silent recheck response:", payload);
+        toast.dismiss('visibility-check');
+        toast.dismiss('focus-check');
+        return;
+      }
+      
+      // Silently redirect to recheck
+      window.location.assign(payload.url);
+      
+    } catch (err) {
+      console.error("Silent recheck error:", err);
+      toast.dismiss('visibility-check');
+      toast.dismiss('focus-check');
+    } finally {
+      isRecheckingRef.current = false;
+    }
+  }, [address]);
 
   // ===== MODAL: User clicked "I Followed Them" =====
   const handleModalFollowed = useCallback(() => {
     setTwitterModal(prev => ({ ...prev, isOpen: false }));
     
-    // Wait for modal to close, then recheck
     setTimeout(() => {
       handleTwitterRecheck();
     }, 500);
@@ -482,7 +644,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     try {
       toast.loading('Verifying Telegram...', { id: 'telegram' });
       
-      // Telegram verification flow
       const telegramUserId = prompt("Enter your Telegram User ID for verification");
       if (!telegramUserId) {
         toast.dismiss('telegram');
@@ -507,7 +668,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       const data = await res.json().catch(() => null);
       
       if (data?.verified) {
-        await upsert.mutateAsync({ tgState: 3, refState: 1 }); // Enable referral after TG
+        await upsert.mutateAsync({ tgState: 3, refState: 1 });
         toast.success("✅ Telegram verified! Referral link unlocked.", { duration: 5000, id: 'telegram' });
       } else {
         toast.error("Telegram not verified", { duration: 5000, id: 'telegram' });
@@ -562,7 +723,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       case 1:
         return "Follow Megalith on X";
       case 2:
-        return "Complete X Follow";
+        return "Complete X Follow ↻";
       case 3:
         return "✓ Following Megalith on X";
       default:
@@ -576,11 +737,11 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     
     switch (xState) {
       case 1:
-        return handleFollowX; // Initial OAuth
+        return handleFollowX;
       case 2:
-        return handleTwitterRecheck; // Recheck follow status
+        return handleTwitterRecheck;
       default:
-        return undefined; // Completed or locked
+        return undefined;
     }
   };
 
@@ -597,7 +758,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         </Btn>
         
         {/* ===== TELEGRAM BUTTON ===== */}
-        {/* Only enabled after Twitter follow is complete (xState === 3) */}
         <Btn 
           state={disabled || pending === "tg" ? 0 : tgState} 
           onClick={!disabled && tgState === 1 ? handleJoinTG : undefined}
@@ -607,7 +767,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         </Btn>
         
         {/* ===== REFERRAL BUTTON ===== */}
-        {/* Only enabled after Telegram is complete (tgState === 3) */}
         <Btn 
           state={disabled || pending === "ref" ? 0 : refState} 
           onClick={!disabled && refState === 1 ? handleGetReferral : undefined}
@@ -630,41 +789,21 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   );
 }
 
-// ===== COMPLETE FLOW SUMMARY =====
+// ===== COMPLETE FLOW WITH TAB FOCUS AUTO-CHECK =====
 // 
-// 1️⃣ INITIAL TWITTER OAUTH (xState: 1 → 2)
-//    - User clicks "Follow Megalith on X"
-//    - Redirects to Twitter OAuth
-//    - After auth, callback checks follow status
-//    - If not following: auto-opens profile, shows modal with auto-check
-//    - Updates xState to 2 (authenticated but not following)
+// 1️⃣ User authenticates with Twitter (xState: 1 → 2)
+// 2️⃣ Profile opens in new tab, modal appears with auto-check
+// 3️⃣ User switches to Twitter tab and follows the account
+// 4️⃣ User switches back to app tab
+// 5️⃣ **AUTO-CHECK TRIGGERS** (via visibilitychange or focus event)
+// 6️⃣ Silent recheck happens automatically
+// 7️⃣ If following: xState updates to 3, Telegram unlocks
+// 8️⃣ If not following yet: User can wait or click "Complete X Follow"
 //
-// 2️⃣ FOLLOW VERIFICATION (xState: 2 → 3)
-//    - Modal auto-checks every 3 seconds
-//    - Or user clicks "I Followed Them"
-//    - Re-authenticates to verify follow status
-//    - If following: updates xState to 3, enables Telegram button
-//    - If not following: shows error toast, keeps modal open
-//
-// 3️⃣ SELF-FOLLOW DETECTION
-//    - If user tries to follow their own account
-//    - Callback detects: twitterUserId === TARGET_TWITTER_ID
-//    - Shows error toast: "You cannot follow your own account"
-//    - Keeps xState at 2 (does NOT enable Telegram)
-//    - Does NOT show modal or auto-open profile
-//
-// 4️⃣ TELEGRAM VERIFICATION (tgState: 1 → 3)
-//    - Only enabled after xState === 3
-//    - User enters Telegram ID
-//    - Backend verifies Telegram membership
-//    - Updates tgState to 3, enables referral button
-//
-// 5️⃣ REFERRAL GENERATION (refState: 1 → 3)
-//    - Only enabled after tgState === 3
-//    - Generates unique referral link
-//    - Updates refState to 3 (completed)
-//
-// STATE PROGRESSION:
-// Twitter: 1 (start) → 2 (authenticated) → 3 (following)
-// Telegram: 0 (locked) → 1 (available) → 3 (complete)
-// Referral: 0 (locked) → 1 (available) → 3 (complete)
+// KEY FEATURES:
+// - Debounced auto-check (5 seconds minimum between checks)
+// - Only checks if profile was opened (profileOpenedRef flag)
+// - Only checks if in state 2 (authenticated but not following)
+// - Silent recheck on tab return (no manual button click needed)
+// - Prevents multiple simultaneous checks (isRecheckingRef flag)
+// - Works even after page reload (as long as xState is 2)
