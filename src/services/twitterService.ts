@@ -34,10 +34,10 @@ function requireEnvVar(name: string): string {
 export async function exchangeCodeForToken(code: string, codeVerifier: string) {
   const X_CLIENT_ID = requireEnvVar("X_CLIENT_ID");
   const X_CLIENT_SECRET = requireEnvVar("X_CLIENT_SECRET");
-const X_REDIRECT_URI =
-  process.env.NODE_ENV === "development"
-    ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
-    : requireEnvVar("X_REDIRECT_URI");
+  const X_REDIRECT_URI =
+    process.env.NODE_ENV === "development"
+      ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
+      : requireEnvVar("X_REDIRECT_URI");
 
   const params = new URLSearchParams({
     client_id: X_CLIENT_ID,
@@ -172,9 +172,6 @@ async function checkFollowV2Lookup(accessToken: string, twitterUserId: string, t
 
     if (!res.ok) return null;
 
-    const data = (await res.json()) as TwitterV2UserLookupResponse;
-
-    if (data.data && data.data.length > 0) return null;
     return null;
   } catch {
     return null;
@@ -247,18 +244,18 @@ export async function updateTwitterProgress(
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
 
+  const progressData = {
+    xState: isFollowing ? 3 : 2,
+    twitterId: twitterUsername,
+    twitterUserId: twitterUserId || null,
+  } as const;
+
   return prisma.userProgress.upsert({
     where: { userId: user.id },
-    update: {
-      xState: isFollowing ? 3 : 2,
-      twitterId: twitterUsername,
-      twitterUserId: twitterUserId,
-    },
+    update: progressData,
     create: {
       userId: user.id,
-      xState: isFollowing ? 3 : 2,
-      twitterId: twitterUsername,
-      twitterUserId: twitterUserId ,
+      ...progressData,
     },
   });
 }
