@@ -35,34 +35,56 @@ function verifyState(state: string): CallbackStatePayload {
   }
 }
 
+// Helper function to build redirect URL with consistent structure
+function buildRedirectUrl(
+  baseUrl: string,
+  returnUrl: string,
+  params: Record<string, string>
+): string {
+  const redirectUrl = new URL(returnUrl, baseUrl);
+  
+  // Add all parameters
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      redirectUrl.searchParams.set(key, value);
+    }
+  });
+  
+  return redirectUrl.toString();
+}
+
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   const error = req.nextUrl.searchParams.get("error");
   
-  const baseUrl = process.env.NEXTAUTH_URL;
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
   
   // ===== FLOW: Handle OAuth errors =====
   if (error) {
     const errorDescription = req.nextUrl.searchParams.get("error_description");
-    console.error('Twitter OAuth error:', error, errorDescription);
+    console.error('❌ Twitter OAuth error:', error, errorDescription);
     
-    const redirectUrl = new URL("/dashboard", baseUrl);
-    redirectUrl.searchParams.set("twitter_result", "error");
-    redirectUrl.searchParams.set("toast_type", "error");
-    redirectUrl.searchParams.set("toast_message", errorDescription || error);
+    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+      twitter_result: "error",
+      toast_type: "error",
+      toast_message: errorDescription || error
+    });
     
-    return Response.redirect(redirectUrl.toString());
+    return Response.redirect(redirectUrl);
   }
   
   // ===== FLOW: Validate required parameters =====
   if (!code || !state) {
-    console.error('Missing code or state in callback');
-    const redirectUrl = new URL("/dashboard", baseUrl);
-    redirectUrl.searchParams.set("twitter_result", "error");
-    redirectUrl.searchParams.set("toast_type", "error");
-    redirectUrl.searchParams.set("toast_message", "Missing authorization code or state");
-    return Response.redirect(redirectUrl.toString());
+    console.error('❌ Missing code or state in callback');
+    
+    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+      twitter_result: "error",
+      toast_type: "error",
+      toast_message: "Missing authorization code or state"
+    });
+    
+    return Response.redirect(redirectUrl);
   }
 
   // ===== FLOW: Verify state signature =====
@@ -70,172 +92,279 @@ export async function GET(req: NextRequest) {
   try {
     payload = verifyState(state);
   } catch (e: unknown) {
-    console.error('State verification failed:', e);
-    const redirectUrl = new URL("/dashboard", baseUrl);
-    redirectUrl.searchParams.set("twitter_result", "error");
-    redirectUrl.searchParams.set("toast_type", "error");
-    redirectUrl.searchParams.set("toast_message", "Invalid state parameter");
-    return Response.redirect(redirectUrl.toString());
+    console.error('❌ State verification failed:', e);
+    
+    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+      twitter_result: "error",
+      toast_type: "error",
+      toast_message: "Invalid state parameter"
+    });
+    
+    return Response.redirect(redirectUrl);
   }
 
   const { address, codeVerifier, returnUrl = "/dashboard", recheck = false } = payload;
 
   try {
-    // ===== FLOW STEP 1: Exchange authorization code for access token =====
+    // ===== STEP 1: Exchange authorization code for access token =====
     console.log('🔄 Step 1: Exchanging code for token...');
-    const tokenResp: TwitterTokenResponse = await exchangeCodeForToken(code, codeVerifier);
-
-    // ===== FLOW STEP 2: Get authenticated user's Twitter info =====
-    console.log('🔄 Step 2: Getting Twitter user info...');
-    const userResp: TwitterUserResponse = await getTwitterUser(tokenResp.access_token);
-    const twitterUsername = userResp.data?.username;
-    const twitterUserId = userResp.data?.id;
-
-    if (!twitterUsername || !twitterUserId) {
-      throw new Error("Failed to get Twitter user information");
+    let tokenResp: TwitterTokenResponse;
+    
+    try {
+      tokenResp = await exchangeCodeForToken(code, codeVerifier);
+      
+      if (!tokenResp.access_token) {
+        throw new Error("No access token received");
+      }
+      
+      console.log('✅ Token exchange successful');
+      console.log(`   Token type: ${tokenResp.token_type}`);
+      console.log(`   Expires in: ${tokenResp.expires_in}s`);
+      console.log(`   Scope: ${tokenResp.scope}`);
+      
+    } catch (tokenError) {
+      console.error('❌ Token exchange failed:', tokenError);
+      throw new Error(`Failed to exchange code for token: ${tokenError instanceof Error ? tokenError.message : String(tokenError)}`);
     }
+
+    // ===== STEP 2: Get authenticated user's Twitter info =====
+    console.log('🔄 Step 2: Getting Twitter user info...');
+    let userResp: TwitterUserResponse;
+    
+    try {
+      userResp = await getTwitterUser(tokenResp.access_token);
+      
+      if (!userResp.data?.username || !userResp.data?.id) {
+        throw new Error("Missing username or user ID in API response");
+      }
+      
+      console.log('✅ User info retrieved successfully');
+      
+    } catch (userError) {
+      console.error('❌ Failed to fetch Twitter user:', userError);
+      
+      // Enhanced error messages based on error type
+      let errorMessage = "Failed to fetch Twitter user information";
+      
+      if (userError instanceof TypeError && userError.message.includes('fetch')) {
+        errorMessage = "Network error: Unable to connect to Twitter API";
+      } else if (userError instanceof Error) {
+        if (userError.message.includes('401') || userError.message.includes('Unauthorized')) {
+          errorMessage = "Twitter authorization failed. Please try again.";
+        } else if (userError.message.includes('403') || userError.message.includes('Forbidden')) {
+          errorMessage = "Twitter access forbidden. Check API permissions.";
+        } else if (userError.message.includes('429')) {
+          errorMessage = "Too many requests. Please wait and try again.";
+        } else {
+          errorMessage = userError.message;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    const twitterUsername = userResp.data.username;
+    const twitterUserId = userResp.data.id;
 
     console.log(`✅ Authenticated: @${twitterUsername} (${twitterUserId})`);
 
-    // ===== FLOW STEP 3: Get target account information =====
-    const TARGET_TWITTER_ID = process.env.TARGET_TWITTER_ID!;
+    // ===== STEP 3: Get target account information =====
+    const TARGET_TWITTER_ID = process.env.TARGET_TWITTER_ID;
     const TARGET_TWITTER_USERNAME = process.env.TARGET_TWITTER_USERNAME;
     
+    if (!TARGET_TWITTER_ID) {
+      console.error('❌ TARGET_TWITTER_ID not configured');
+      throw new Error("Server configuration error: TARGET_TWITTER_ID not set");
+    }
+    
     let targetUsername: string | undefined = TARGET_TWITTER_USERNAME;
+    
     if (!targetUsername) {
-      const fetchedUsername = await getTwitterUsernameById(tokenResp.access_token, TARGET_TWITTER_ID);
-      targetUsername = fetchedUsername || undefined;
+      try {
+        const fetchedUsername = await getTwitterUsernameById(tokenResp.access_token, TARGET_TWITTER_ID);
+        targetUsername = fetchedUsername || undefined;
+      } catch (targetError) {
+        console.error('⚠️ Failed to fetch target username:', targetError);
+        // Continue with ID only
+      }
     }
 
-    console.log(`🎯 Target account: @${targetUsername} (${TARGET_TWITTER_ID})`);
+    console.log(`🎯 Target account: @${targetUsername || 'Unknown'} (${TARGET_TWITTER_ID})`);
 
-    // ===== FLOW STEP 4: Check if user is following the target account =====
-    // CRITICAL: This also handles self-follow detection
-    console.log(`🔄 Step 4: Checking if @${twitterUsername} follows @${targetUsername}...`);
-    const followResult = await checkFollowEnhanced(
-      tokenResp.access_token, 
-      twitterUserId, 
-      TARGET_TWITTER_ID,
-      targetUsername || undefined
-    );
-
-    console.log('📊 Follow check result:', followResult);
-
-    // ===== FLOW STEP 5: Determine final state based on follow status =====
-    // State 2: Authenticated but not following
-    // State 3: Authenticated and following (complete)
+    // ===== STEP 4: Check for self-follow FIRST =====
     const isSelfFollow = twitterUserId === TARGET_TWITTER_ID;
     
-    // ===== CRITICAL: Handle self-follow case =====
-    // User cannot follow themselves, so we mark as "not following" (state 2)
-    // Do NOT enable Telegram button (tgState stays at current value, not changed to 1)
-    const finalState = isSelfFollow ? 2 : (followResult.isFollowing ? 3 : 2);
+    if (isSelfFollow) {
+      console.log(`⚠️ SELF-FOLLOW DETECTED: User @${twitterUsername} (${twitterUserId}) is the target account`);
+      
+      // Update database with state 2 (authenticated but not following)
+      await updateTwitterProgress(
+        address, 
+        twitterUsername, 
+        twitterUserId,
+        false // Cannot follow self
+      );
+      
+      console.log('💾 Database updated: xState=2, following=false (self-follow)');
+      
+      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+        twitter_result: "self_follow",
+        is_following: "false",
+        username: twitterUsername,
+        toast_type: "error",
+        toast_message: `You cannot follow your own account (@${twitterUsername}). Please connect with a different Twitter account.`
+      });
+      
+      console.log('🔄 Redirecting with self_follow result');
+      return Response.redirect(redirectUrl);
+    }
+
+    // ===== STEP 5: Check if user is following the target account =====
+    console.log(`🔄 Step 5: Checking if @${twitterUsername} follows @${targetUsername || TARGET_TWITTER_ID}...`);
+    let followResult;
     
-    // Only update follow status if NOT self-follow
-    if (!isSelfFollow) {
+    try {
+      followResult = await checkFollowEnhanced(
+        tokenResp.access_token, 
+        twitterUserId, 
+        TARGET_TWITTER_ID,
+        targetUsername || undefined
+      );
+      
+      console.log('📊 Follow check result:', {
+        isFollowing: followResult.isFollowing,
+        needsManualCheck: followResult.needsManualCheck,
+        redirectToProfile: followResult.redirectToProfile,
+        profileUrl: followResult.profileUrl
+      });
+      
+    } catch (followError) {
+      console.error('❌ Follow check failed:', followError);
+      throw new Error(`Failed to check follow status: ${followError instanceof Error ? followError.message : String(followError)}`);
+    }
+
+    // ===== STEP 6: Update database and determine final state =====
+    const finalState = followResult.isFollowing ? 3 : 2;
+    
+    try {
       await updateTwitterProgress(
         address, 
         twitterUsername, 
         twitterUserId,
         followResult.isFollowing
       );
-    } else {
-      // For self-follow, only update Twitter info without changing follow status
-      await updateTwitterProgress(
-        address, 
-        twitterUsername, 
-        twitterUserId,
-        false // Explicitly set to not following
-      );
+      
+      console.log(`💾 Database updated: xState=${finalState}, following=${followResult.isFollowing}`);
+      
+    } catch (dbError) {
+      console.error('⚠️ Database update failed (continuing anyway):', dbError);
+      // Don't throw - continue with redirect
     }
 
-    console.log(`💾 Updated progress: state=${finalState}, following=${followResult.isFollowing && !isSelfFollow}, selfFollow=${isSelfFollow}`);
-
-    // ===== FLOW STEP 6: Build redirect URL with result parameters =====
-    const redirectUrl = new URL(returnUrl, baseUrl);
+    // ===== STEP 7: Build redirect URL based on follow status =====
     
-    // ===== CASE 1: Self-follow attempt =====
-    if (isSelfFollow) {
-      redirectUrl.searchParams.set("twitter_result", "self_follow");
-      redirectUrl.searchParams.set("is_following", "false");
-      redirectUrl.searchParams.set("username", twitterUsername);
-      redirectUrl.searchParams.set("toast_type", "error");
-      redirectUrl.searchParams.set("toast_message", `You cannot follow your own account (@${twitterUsername}). Please use a different account.`);
+    // CASE 1: Successfully following ✅
+    if (followResult.isFollowing) {
+      console.log(`✅ SUCCESS: @${twitterUsername} is following @${targetUsername}`);
       
-      console.log(`⚠️ Self-follow attempt detected for @${twitterUsername}`);
+      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+        twitter_result: recheck ? "recheck_success" : "success",
+        is_following: "true",
+        username: twitterUsername,
+        target_username: targetUsername || "",
+        toast_type: "success",
+        toast_message: `✅ Successfully verified! You are following @${targetUsername}.`
+      });
       
-    // ===== CASE 2: User is successfully following =====
-    } else if (followResult.isFollowing) {
-      redirectUrl.searchParams.set("twitter_result", recheck ? "recheck_success" : "success");
-      redirectUrl.searchParams.set("is_following", "true");
-      redirectUrl.searchParams.set("username", twitterUsername);
-      redirectUrl.searchParams.set("toast_type", "success");
-      redirectUrl.searchParams.set("toast_message", `✅ Successfully verified! You are following @${targetUsername}.`);
-      
-      console.log(`✅ Success: @${twitterUsername} is following @${targetUsername}`);
-      
-    // ===== CASE 3: API couldn't verify, needs manual check =====
-    } else if (followResult.needsManualCheck) {
-      redirectUrl.searchParams.set("twitter_result", "manual_check");
-      redirectUrl.searchParams.set("is_following", "false");
-      redirectUrl.searchParams.set("username", twitterUsername);
-      redirectUrl.searchParams.set("target_username", targetUsername || "");
-      redirectUrl.searchParams.set("profile_url", followResult.profileUrl || "");
-      redirectUrl.searchParams.set("toast_type", "warning");
-      redirectUrl.searchParams.set("toast_message", `Connected as @${twitterUsername}. Manual verification required.`);
-      
-      console.log(`⚠️ Manual check needed for @${twitterUsername}`);
-      
-    // ===== CASE 4: User is not following, redirect to profile =====
-    } else if (followResult.redirectToProfile) {
-      redirectUrl.searchParams.set("twitter_result", recheck ? "still_not_following" : "not_following");
-      redirectUrl.searchParams.set("is_following", "false");
-      redirectUrl.searchParams.set("username", twitterUsername);
-      redirectUrl.searchParams.set("target_username", targetUsername || "");
-      redirectUrl.searchParams.set("profile_url", followResult.profileUrl || "");
-      redirectUrl.searchParams.set("needs_follow", "true");
-      
-      // Don't show toast here - let the client handle modal
-      if (recheck) {
-        redirectUrl.searchParams.set("toast_type", "error");
-        redirectUrl.searchParams.set("toast_message", `❌ Still not following @${targetUsername}. Please follow and try again.`);
-      }
-      
-      console.log(`❌ Not following: @${twitterUsername} needs to follow @${targetUsername}`);
-      
-    // ===== CASE 5: Default - authenticated but status unclear =====
-    } else {
-      redirectUrl.searchParams.set("twitter_result", "authenticated");
-      redirectUrl.searchParams.set("is_following", "false");
-      redirectUrl.searchParams.set("username", twitterUsername);
-      redirectUrl.searchParams.set("target_username", targetUsername || "");
-      redirectUrl.searchParams.set("toast_type", "info");
-      redirectUrl.searchParams.set("toast_message", `Connected as @${twitterUsername}. Please complete follow verification.`);
-      
-      console.log(`✅ Authenticated but not following: @${twitterUsername}`);
+      return Response.redirect(redirectUrl);
     }
-
-    return Response.redirect(redirectUrl.toString());
+    
+    // CASE 2: Manual verification needed ⚠️
+    if (followResult.needsManualCheck) {
+      console.log(`⚠️ MANUAL CHECK: Automatic verification unavailable for @${twitterUsername}`);
+      
+      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+        twitter_result: "manual_check",
+        is_following: "false",
+        username: twitterUsername,
+        target_username: targetUsername || "",
+        profile_url: followResult.profileUrl || "",
+        toast_type: "warning",
+        toast_message: `Connected as @${twitterUsername}. Manual verification required.`
+      });
+      
+      return Response.redirect(redirectUrl);
+    }
+    
+    // CASE 3: Not following - needs to follow ❌
+    if (followResult.redirectToProfile) {
+      console.log(`❌ NOT FOLLOWING: @${twitterUsername} needs to follow @${targetUsername}`);
+      
+      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+        twitter_result: recheck ? "still_not_following" : "not_following",
+        is_following: "false",
+        username: twitterUsername,
+        target_username: targetUsername || "",
+        profile_url: followResult.profileUrl || "",
+        needs_follow: "true",
+        toast_type: recheck ? "error" : "info",
+        toast_message: recheck 
+          ? `❌ Still not following @${targetUsername}. Please follow and try again.`
+          : `Connected as @${twitterUsername}. Please follow @${targetUsername} to continue.`
+      });
+      
+      return Response.redirect(redirectUrl);
+    }
+    
+    // CASE 4: Default - authenticated but status unclear ℹ️
+    console.log(`ℹ️ AUTHENTICATED: @${twitterUsername} connected, status unclear`);
+    
+    const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+      twitter_result: "authenticated",
+      is_following: "false",
+      username: twitterUsername,
+      target_username: targetUsername || "",
+      toast_type: "info",
+      toast_message: `Connected as @${twitterUsername}. Please complete follow verification.`
+    });
+    
+    return Response.redirect(redirectUrl);
 
   } catch (err: unknown) {
-    console.error('❌ Twitter callback error:', err);
+    console.error('❌ CRITICAL ERROR in Twitter callback:', err);
+    
+    if (err instanceof Error) {
+      console.error('Error details:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      });
+    }
 
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const redirectUrl = new URL(returnUrl, baseUrl);
-    redirectUrl.searchParams.set("twitter_result", "error");
-    redirectUrl.searchParams.set("toast_type", "error");
-    redirectUrl.searchParams.set("toast_message", err instanceof Error ? err.message : String(err));
+    // Provide user-friendly error messages
+    let errorMessage = "An error occurred during Twitter authentication";
+    
+    if (err instanceof Error) {
+      if (err.message.includes('Network') || err.message.includes('fetch')) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (err.message.includes('token') || err.message.includes('authorization')) {
+        errorMessage = "Authentication failed. Please try connecting again.";
+      } else if (err.message.includes('user') || err.message.includes('Twitter user')) {
+        errorMessage = "Failed to retrieve Twitter account info. Please try again.";
+      } else if (err.message.includes('configuration') || err.message.includes('TARGET_TWITTER_ID')) {
+        errorMessage = "Server configuration error. Please contact support.";
+      } else {
+        errorMessage = err.message;
+      }
+    }
+    
+    const redirectUrl = buildRedirectUrl(baseUrl, returnUrl || "/dashboard", {
+      twitter_result: "error",
+      toast_type: "error",
+      toast_message: errorMessage
+    });
 
-    return Response.redirect(redirectUrl.toString());
+    return Response.redirect(redirectUrl);
   }
 }
 
-// ===== FLOW SUMMARY =====
-// 1. Validate OAuth callback parameters (code, state)
-// 2. Exchange authorization code for access token
-// 3. Get authenticated user's Twitter profile
-// 4. Get target account information
-// 5. Check if user follows target (with self-follow detection)
-// 6. Update database with follow status
-// 7. Redirect with appropriate result parameters
-// 8. Client handles toast notifications and modal display
