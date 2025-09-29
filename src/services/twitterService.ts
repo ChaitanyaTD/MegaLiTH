@@ -252,13 +252,13 @@ export async function updateTwitterProgress(
     update: {
       xState: isFollowing ? 3 : 2,
       twitterId: twitterUsername,
-      twitterUserId: twitterUserId || null,
+      twitterUserId: twitterUserId,
     },
     create: {
       userId: user.id,
       xState: isFollowing ? 3 : 2,
       twitterId: twitterUsername,
-      twitterUserId: twitterUserId || null,
+      twitterUserId: twitterUserId ,
     },
   });
 }
