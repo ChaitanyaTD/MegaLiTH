@@ -244,22 +244,18 @@ export async function updateTwitterProgress(
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
 
-  const progressData: {
-    xState: number;
-    twitterId: string;
-    twitterUserId: string | null;
-  } = {
-    xState: isFollowing ? 3 : 2,
-    twitterId: twitterUsername,
-    twitterUserId: twitterUserId || null,
-  };
-
   return prisma.userProgress.upsert({
     where: { userId: user.id },
-    update: progressData,
+    update: {
+      xState: isFollowing ? 3 : 2,
+      twitterId: twitterUsername,
+      twitterUserId: twitterUserId ?? undefined,
+    },
     create: {
       userId: user.id,
-      ...progressData,
+      xState: isFollowing ? 3 : 2,
+      twitterId: twitterUsername,
+      twitterUserId: twitterUserId ?? undefined,
     },
   });
 }
