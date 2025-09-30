@@ -502,6 +502,10 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   };
 
+  // Calculate actual button states based on prerequisites
+  const actualTgState = disabled ? 0 : (xState === 3 ? Math.max(tgState, 1) : 0);
+  const actualRefState = disabled ? 0 : (tgState === 3 ? Math.max(refState, 1) : 0);
+
   return (
     <>
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
@@ -514,16 +518,16 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         </Btn>
         
         <Btn 
-          state={disabled || pending === "tg" ? 0 : tgState} 
-          onClick={!disabled && tgState === 1 ? handleJoinTG : undefined}
+          state={pending === "tg" ? 0 : actualTgState} 
+          onClick={actualTgState === 1 ? handleJoinTG : undefined}
           loading={pending === "tg"}
         >
           {tgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
         </Btn>
         
         <Btn 
-          state={disabled || pending === "ref" ? 0 : refState} 
-          onClick={!disabled && refState === 1 ? handleGetReferral : undefined}
+          state={pending === "ref" ? 0 : actualRefState} 
+          onClick={actualRefState === 1 ? handleGetReferral : undefined}
           loading={pending === "ref"}
         >
           {refState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
