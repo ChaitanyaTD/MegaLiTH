@@ -35,7 +35,6 @@ function verifyState(state: string): CallbackStatePayload {
   }
 }
 
-// Helper function to build redirect URL with consistent structure
 function buildRedirectUrl(
   baseUrl: string,
   returnUrl: string,
@@ -43,7 +42,6 @@ function buildRedirectUrl(
 ): string {
   const redirectUrl = new URL(returnUrl, baseUrl);
   
-  // Add all parameters
   Object.entries(params).forEach(([key, value]) => {
     if (value) {
       redirectUrl.searchParams.set(key, value);
@@ -60,7 +58,6 @@ export async function GET(req: NextRequest) {
   
   const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
   
-  // ===== FLOW: Handle OAuth errors =====
   if (error) {
     const errorDescription = req.nextUrl.searchParams.get("error_description");
     console.error('❌ Twitter OAuth error:', error, errorDescription);
@@ -74,7 +71,6 @@ export async function GET(req: NextRequest) {
     return Response.redirect(redirectUrl);
   }
   
-  // ===== FLOW: Validate required parameters =====
   if (!code || !state) {
     console.error('❌ Missing code or state in callback');
     
@@ -87,7 +83,6 @@ export async function GET(req: NextRequest) {
     return Response.redirect(redirectUrl);
   }
 
-  // ===== FLOW: Verify state signature =====
   let payload: CallbackStatePayload;
   try {
     payload = verifyState(state);
@@ -118,9 +113,6 @@ export async function GET(req: NextRequest) {
       }
       
       console.log('✅ Token exchange successful');
-      console.log(`   Token type: ${tokenResp.token_type}`);
-      console.log(`   Expires in: ${tokenResp.expires_in}s`);
-      console.log(`   Scope: ${tokenResp.scope}`);
       
     } catch (tokenError) {
       console.error('❌ Token exchange failed:', tokenError);
@@ -143,7 +135,6 @@ export async function GET(req: NextRequest) {
     } catch (userError) {
       console.error('❌ Failed to fetch Twitter user:', userError);
       
-      // Enhanced error messages based on error type
       let errorMessage = "Failed to fetch Twitter user information";
       
       if (userError instanceof TypeError && userError.message.includes('fetch')) {
@@ -185,7 +176,6 @@ export async function GET(req: NextRequest) {
         targetUsername = fetchedUsername || undefined;
       } catch (targetError) {
         console.error('⚠️ Failed to fetch target username:', targetError);
-        // Continue with ID only
       }
     }
 
@@ -197,12 +187,11 @@ export async function GET(req: NextRequest) {
     if (isSelfFollow) {
       console.log(`⚠️ SELF-FOLLOW DETECTED: User @${twitterUsername} (${twitterUserId}) is the target account`);
       
-      // Update database with state 2 (authenticated but not following)
       await updateTwitterProgress(
         address, 
         twitterUsername, 
         twitterUserId,
-        false // Cannot follow self
+        false
       );
       
       console.log('💾 Database updated: xState=2, following=false (self-follow)');
@@ -240,10 +229,31 @@ export async function GET(req: NextRequest) {
       
     } catch (followError) {
       console.error('❌ Follow check failed:', followError);
-      throw new Error(`Failed to check follow status: ${followError instanceof Error ? followError.message : String(followError)}`);
+      
+      // CRITICAL FIX: If follow check fails, update to state 2 and show manual verification
+      await updateTwitterProgress(
+        address, 
+        twitterUsername, 
+        twitterUserId,
+        false
+      );
+      
+      console.log('⚠️ Follow check failed, falling back to manual verification');
+      
+      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+        twitter_result: "manual_check",
+        is_following: "false",
+        username: twitterUsername,
+        target_username: targetUsername || "",
+        profile_url: targetUsername ? `https://twitter.com/${targetUsername}` : "",
+        toast_type: "warning",
+        toast_message: `Connected as @${twitterUsername}. Please manually verify you're following @${targetUsername}.`
+      });
+      
+      return Response.redirect(redirectUrl);
     }
 
-    // ===== STEP 6: Update database and determine final state =====
+    // ===== STEP 6: Update database IMMEDIATELY based on follow status =====
     const finalState = followResult.isFollowing ? 3 : 2;
     
     try {
@@ -258,7 +268,6 @@ export async function GET(req: NextRequest) {
       
     } catch (dbError) {
       console.error('⚠️ Database update failed (continuing anyway):', dbError);
-      // Don't throw - continue with redirect
     }
 
     // ===== STEP 7: Build redirect URL based on follow status =====
@@ -290,7 +299,7 @@ export async function GET(req: NextRequest) {
         target_username: targetUsername || "",
         profile_url: followResult.profileUrl || "",
         toast_type: "warning",
-        toast_message: `Connected as @${twitterUsername}. Manual verification required.`
+        toast_message: `Connected as @${twitterUsername}. Please verify you're following @${targetUsername}.`
       });
       
       return Response.redirect(redirectUrl);
@@ -341,7 +350,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Provide user-friendly error messages
     let errorMessage = "An error occurred during Twitter authentication";
     
     if (err instanceof Error) {
@@ -367,4 +375,3 @@ export async function GET(req: NextRequest) {
     return Response.redirect(redirectUrl);
   }
 }
-

@@ -217,7 +217,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const isRecheckingRef = useRef(false);
   const lastCheckTimeRef = useRef(0);
   const profileOpenedRef = useRef(false);
-  const callbackProcessedRef = useRef(false); // Prevent duplicate processing
+  const callbackProcessedRef = useRef(false);
 
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;
@@ -228,7 +228,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     const url = new URL(window.location.href);
     const params = new URLSearchParams(url.search);
     
-    // List of Twitter callback parameters to remove
     const twitterParams = [
       'twitter_result',
       'username',
@@ -259,7 +258,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   // ===== HANDLE TWITTER CALLBACK RESULTS =====
   useEffect(() => {
     const handleTwitterCallback = async () => {
-      // Prevent duplicate processing
       if (callbackProcessedRef.current) {
         console.log('⚠️ Callback already processed, skipping...');
         return;
@@ -267,18 +265,17 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
 
       const urlParams = new URLSearchParams(window.location.search);
       const twitterResult = urlParams.get('twitter_result');
+      const isFollowing = urlParams.get('is_following') === 'true';
       
       if (!twitterResult) return;
 
-      // Mark as processed immediately
       callbackProcessedRef.current = true;
-      console.log(`🔄 Processing Twitter callback: ${twitterResult}`);
+      console.log(`🔄 Processing Twitter callback: ${twitterResult}, isFollowing: ${isFollowing}`);
 
       const username = urlParams.get('username');
       const targetUsername = urlParams.get('target_username');
       const profileUrl = urlParams.get('profile_url');
       const toastMessage = urlParams.get('toast_message');
-      const isFollowing = urlParams.get('is_following') === 'true';
       
       try {
         // ===== CASE 1: Self-follow attempt =====
@@ -299,11 +296,16 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           return;
         }
         
-        // ===== CASE 2: Successfully following =====
-        if (twitterResult === 'success' || twitterResult === 'recheck_success') {
-          console.log('✅ Follow verification successful');
+        // ===== CASE 2: Successfully following (CRITICAL FIX) =====
+        if ((twitterResult === 'success' || twitterResult === 'recheck_success') && isFollowing) {
+          console.log('✅ Follow verification successful - updating to state 3');
           
+          // CRITICAL: Update database FIRST, then clean URL
           await upsert.mutateAsync({ xState: 3, tgState: 1 });
+          
+          // Wait for state to update
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
           cleanUrlParams();
           profileOpenedRef.current = false;
           
@@ -318,7 +320,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         }
         
         // ===== CASE 3: Not following - need to follow =====
-        if (twitterResult === 'not_following') {
+        if (twitterResult === 'not_following' && !isFollowing) {
           console.log('❌ User is not following yet');
           
           await upsert.mutateAsync({ xState: 2 });
@@ -326,10 +328,8 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           profileOpenedRef.current = true;
           
           if (targetUsername && profileUrl) {
-            // Open profile automatically
             window.open(profileUrl, '_blank', 'noopener,noreferrer');
             
-            // Show modal after short delay
             setTimeout(() => {
               setTwitterModal({
                 isOpen: true,
@@ -360,7 +360,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         }
         
         // ===== CASE 4: Still not following after recheck =====
-        if (twitterResult === 'still_not_following') {
+        if (twitterResult === 'still_not_following' && !isFollowing) {
           console.log('❌ Still not following after recheck');
           
           cleanUrlParams();
@@ -473,9 +473,8 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       }
     };
 
-    // Run callback handler
     handleTwitterCallback();
-  }, [upsert, cleanUrlParams]); // Stable dependencies
+  }, [upsert, cleanUrlParams]);
 
   // ===== AUTO-RECHECK ON TAB FOCUS =====
   useEffect(() => {
@@ -532,7 +531,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const handleFollowX = useCallback(async () => {
     if (!address || pending) return;
     
-    // Reset callback processed flag for new auth flow
     callbackProcessedRef.current = false;
     
     setPending("x");
@@ -581,7 +579,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const handleTwitterRecheck = useCallback(async () => {
     if (!address || pending || isRecheckingRef.current) return;
     
-    // Reset callback processed flag for recheck
     callbackProcessedRef.current = false;
     
     isRecheckingRef.current = true;
@@ -627,7 +624,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const handleTwitterRecheckSilent = useCallback(async () => {
     if (!address || isRecheckingRef.current) return;
     
-    // Reset callback processed flag
     callbackProcessedRef.current = false;
     
     isRecheckingRef.current = true;
