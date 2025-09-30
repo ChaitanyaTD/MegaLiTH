@@ -168,14 +168,14 @@ export async function GET(req: NextRequest) {
     if (isSelfFollow) {
       console.log(`⚠️ SELF-FOLLOW: User @${twitterUsername} is the target account`);
       
-      // Update to state 2 (connected but not following) and enable Telegram
-      await updateTwitterProgress(address, twitterUsername, twitterUserId, false);
+      // Target account owner - mark as completed (state 3) and enable Telegram
+      await updateTwitterProgress(address, twitterUsername, twitterUserId, true);
       
       const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
-        twitter_result: "self_follow",
+        twitter_result: "self_account",
         username: twitterUsername,
         target_username: targetUsername || "",
-        toast_message: `Connected as @${twitterUsername}. This is the target account - Telegram unlocked!`
+        toast_message: `You are the target account owner (@${twitterUsername}). Telegram unlocked!`
       });
       
       return Response.redirect(redirectUrl);

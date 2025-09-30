@@ -206,16 +206,16 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       const toastMessage = urlParams.get('toast_message');
       
       try {
-        // CASE 1: Self-follow (target account owner) - Enable Telegram
-        if (twitterResult === 'self_follow') {
-          console.log('⚠️ Self-follow detected - enabling Telegram');
+        // CASE 1: Self-account (target account owner) - Mark as complete and enable Telegram
+        if (twitterResult === 'self_account') {
+          console.log('🎯 Target account owner detected - marking as complete');
           
-          await upsert.mutateAsync({ xState: 2, tgState: 1 });
+          await upsert.mutateAsync({ xState: 3, tgState: 1 });
           await refetch();
           cleanUrlParams();
           
           toast.success(
-            toastMessage || `Connected as @${username}. Telegram unlocked!`,
+            toastMessage || `You are the target account owner! Telegram unlocked.`,
             { duration: 5000, icon: '🎯' }
           );
           return;
