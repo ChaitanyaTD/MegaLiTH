@@ -54,15 +54,13 @@ function TwitterFollowModal({
   onClose, 
   onFollowed, 
   profileUrl, 
-  targetUsername,
-  authData 
+  targetUsername
 }: {
   isOpen: boolean;
   onClose: () => void;
   onFollowed: () => void;
   profileUrl?: string;
   targetUsername?: string;
-  authData?: Record<string, unknown>;
 }) {
   const [isFollowing, setIsFollowing] = useState(false);
 
@@ -87,10 +85,6 @@ function TwitterFollowModal({
     }, 1000);
   };
 
-  const handleClose = () => {
-    onClose();
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -101,7 +95,7 @@ function TwitterFollowModal({
             Follow Required
           </h3>
           <button
-            onClick={handleClose}
+            onClick={onClose}
             className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
           >
             ×
@@ -110,7 +104,7 @@ function TwitterFollowModal({
         
         <div className="space-y-4">
           <p className="text-gray-600 dark:text-gray-400">
-            Please follow @{targetUsername} on X (Twitter) to continue.
+            Please follow @{targetUsername} on X (Twitter) to unlock Telegram.
           </p>
           
           {profileUrl && (
@@ -135,20 +129,12 @@ function TwitterFollowModal({
             </button>
             
             <button
-              onClick={handleClose}
+              onClick={onClose}
               className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
             >
-              Cancel
+              Later
             </button>
           </div>
-          
-          {Boolean(authData?.apiError) && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-              <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                <strong>Note:</strong> Automatic verification failed ({String(authData?.apiError)}). Please follow manually and click &quot;I Followed Them&quot;.
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -164,12 +150,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     isOpen: boolean;
     profileUrl?: string;
     targetUsername?: string;
-    authData?: Record<string, unknown>;
   }>({ isOpen: false });
 
-  const isRecheckingRef = useRef(false);
   const callbackProcessedRef = useRef(false);
-  const autoRecheckOnLoadRef = useRef(false);
 
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;
@@ -185,11 +168,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       'username',
       'target_username',
       'profile_url',
-      'error_message',
-      'toast_type',
-      'toast_message',
-      'is_following',
-      'needs_follow'
+      'toast_message'
     ];
     
     let hasChanges = false;
@@ -203,81 +182,23 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     if (hasChanges) {
       url.search = params.toString();
       window.history.replaceState({}, document.title, url.toString());
-      console.log('✅ URL parameters cleaned');
     }
   }, []);
-
-  // ===== AUTO-RECHECK ON PAGE LOAD (if in state 2) =====
-  useEffect(() => {
-    const performAutoRecheck = async () => {
-      // Only auto-recheck once per session when in state 2
-      if (xState === 2 && !autoRecheckOnLoadRef.current && !isRecheckingRef.current && address) {
-        autoRecheckOnLoadRef.current = true;
-        
-        console.log('🔄 Auto-checking follow status on page load (state 2)...');
-        
-        // Show subtle loading toast
-        toast.loading('Checking your follow status...', { 
-          id: 'auto-load-check',
-          duration: 3000 
-        });
-        
-        // Wait a moment for UI to settle
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        try {
-          isRecheckingRef.current = true;
-          
-          const res = await fetch(`/api/twitter/auth?address=${address}&recheck=true`, {
-            method: "GET",
-            headers: { Accept: "application/json" },
-          });
-          
-          if (res.ok) {
-            const payload = await res.json();
-            
-            if (payload?.ok && payload?.url) {
-              toast.dismiss('auto-load-check');
-              console.log('🔄 Redirecting for auto-recheck...');
-              callbackProcessedRef.current = false;
-              window.location.assign(payload.url);
-              return;
-            }
-          }
-          
-          toast.dismiss('auto-load-check');
-          console.log('⚠️ Auto-recheck failed, user can manually recheck');
-          
-        } catch (error) {
-          console.error('❌ Auto-recheck error:', error);
-          toast.dismiss('auto-load-check');
-        } finally {
-          isRecheckingRef.current = false;
-        }
-      }
-    };
-
-    // Run after a short delay to ensure data is loaded
-    const timer = setTimeout(performAutoRecheck, 500);
-    return () => clearTimeout(timer);
-  }, [xState, address]);
 
   // ===== HANDLE TWITTER CALLBACK RESULTS =====
   useEffect(() => {
     const handleTwitterCallback = async () => {
       if (callbackProcessedRef.current) {
-        console.log('⚠️ Callback already processed, skipping...');
         return;
       }
 
       const urlParams = new URLSearchParams(window.location.search);
       const twitterResult = urlParams.get('twitter_result');
-      const isFollowing = urlParams.get('is_following') === 'true';
       
       if (!twitterResult) return;
 
       callbackProcessedRef.current = true;
-      console.log(`🔄 Processing Twitter callback: ${twitterResult}, isFollowing: ${isFollowing}`);
+      console.log(`🔄 Processing Twitter callback: ${twitterResult}`);
 
       const username = urlParams.get('username');
       const targetUsername = urlParams.get('target_username');
@@ -285,182 +206,94 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       const toastMessage = urlParams.get('toast_message');
       
       try {
-        // ===== CASE 1: Self-follow attempt =====
+        // CASE 1: Self-follow (target account owner) - Enable Telegram
         if (twitterResult === 'self_follow') {
-          console.log('⚠️ Self-follow detected');
+          console.log('⚠️ Self-follow detected - enabling Telegram');
           
-          await upsert.mutateAsync({ xState: 2 });
+          await upsert.mutateAsync({ xState: 2, tgState: 1 });
           await refetch();
-          cleanUrlParams();
-          
-          toast.error(
-            toastMessage || `You cannot follow your own account (@${username}). Please connect with a different Twitter account.`,
-            { 
-              duration: 8000,
-              icon: '🚫',
-              id: 'self-follow-error'
-            }
-          );
-          return;
-        }
-        
-        // ===== CASE 2: Successfully following =====
-        if ((twitterResult === 'success' || twitterResult === 'recheck_success') && isFollowing) {
-          console.log('✅ Follow verification successful - updating to state 3');
-          
-          await upsert.mutateAsync({ xState: 3, tgState: 1 });
-          await refetch();
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
           cleanUrlParams();
           
           toast.success(
-            toastMessage || `✅ Successfully verified! You are following @${targetUsername}.`,
-            { 
-              duration: 5000,
-              id: 'follow-success'
-            }
+            toastMessage || `Connected as @${username}. Telegram unlocked!`,
+            { duration: 5000, icon: '🎯' }
           );
           return;
         }
         
-        // ===== CASE 3: Not following - need to follow =====
-        if (twitterResult === 'not_following' && !isFollowing) {
-          console.log('❌ User is not following yet');
+        // CASE 2: Successfully following - Enable Telegram
+        if (twitterResult === 'following') {
+          console.log('✅ Follow verified - enabling Telegram');
+          
+          await upsert.mutateAsync({ xState: 3, tgState: 1 });
+          await refetch();
+          cleanUrlParams();
+          
+          toast.success(
+            toastMessage || `✅ Following @${targetUsername} - Telegram unlocked!`,
+            { duration: 5000 }
+          );
+          return;
+        }
+        
+        // CASE 3: Not following yet - Show modal
+        if (twitterResult === 'not_following') {
+          console.log('❌ Not following - showing modal');
           
           await upsert.mutateAsync({ xState: 2 });
           await refetch();
           cleanUrlParams();
           
           if (targetUsername && profileUrl) {
-            // Show modal immediately
             setTwitterModal({
               isOpen: true,
               profileUrl,
-              targetUsername,
-              authData: { needsFollow: true }
+              targetUsername
             });
             
             toast.success(
-              `Connected as @${username}. Please follow @${targetUsername} to continue.`,
-              {
-                duration: 6000,
-                icon: '👋',
-                id: 'not-following-info'
-              }
-            );
-          } else {
-            toast.error(
-              toastMessage || 'Please follow the required account to continue.',
-              {
-                duration: 5000,
-                id: 'not-following-error'
-              }
+              toastMessage || `Connected as @${username}. Please follow @${targetUsername}.`,
+              { duration: 5000, icon: '👋' }
             );
           }
           return;
         }
         
-        // ===== CASE 4: Still not following after recheck =====
-        if (twitterResult === 'still_not_following' && !isFollowing) {
-          console.log('❌ Still not following after recheck');
+        // CASE 4: Still not following after recheck
+        if (twitterResult === 'still_not_following') {
+          console.log('❌ Still not following');
           
           await refetch();
           cleanUrlParams();
           
-          if (targetUsername) {
+          if (targetUsername && profileUrl) {
             setTwitterModal({
               isOpen: true,
-              profileUrl: profileUrl || undefined,
-              targetUsername,
-              authData: { stillNotFollowing: true }
+              profileUrl,
+              targetUsername
             });
           }
           
           toast.error(
-            toastMessage || `❌ Still not following @${targetUsername}. Please follow and try again.`,
-            { 
-              duration: 6000,
-              id: 'still-not-following'
-            }
+            toastMessage || `Still not following @${targetUsername}. Please follow to continue.`,
+            { duration: 6000 }
           );
           return;
         }
         
-        // ===== CASE 5: Manual verification needed =====
-        if (twitterResult === 'manual_check') {
-          console.log('⚠️ Manual verification required');
-          
-          await upsert.mutateAsync({ xState: 2 });
-          await refetch();
-          cleanUrlParams();
-          
-          if (targetUsername) {
-            setTwitterModal({
-              isOpen: true,
-              profileUrl: profileUrl || undefined,
-              targetUsername,
-              authData: { 
-                needsManualCheck: true,
-                apiError: "Automatic verification unavailable"
-              }
-            });
-          }
-          
-          toast(
-            toastMessage || `Connected as @${username}. Manual verification required.`,
-            { 
-              duration: 5000,
-              icon: '⚠️',
-              id: 'manual-check'
-            }
-          );
-          return;
-        }
-        
-        // ===== CASE 6: Basic authentication =====
-        if (twitterResult === 'authenticated') {
-          console.log('✅ Authenticated but follow status unclear');
-          
-          await upsert.mutateAsync({ xState: 2 });
-          await refetch();
-          cleanUrlParams();
-          
-          toast(
-            toastMessage || `Connected as @${username}. Checking follow status...`,
-            { 
-              duration: 3000,
-              icon: 'ℹ️',
-              id: 'authenticated'
-            }
-          );
-          
-          // Trigger auto-recheck after authentication
-          setTimeout(() => {
-            if (!isRecheckingRef.current) {
-              handleTwitterRecheckSilent();
-            }
-          }, 2000);
-          return;
-        }
-        
-        // ===== CASE 7: Error handling =====
+        // CASE 5: Error
         if (twitterResult === 'error') {
           console.error('❌ Twitter OAuth error');
-          
           cleanUrlParams();
           
           toast.error(
             toastMessage || 'Twitter authentication failed. Please try again.',
-            { 
-              duration: 6000,
-              id: 'twitter-error'
-            }
+            { duration: 6000 }
           );
           return;
         }
 
-        // ===== Unknown result =====
+        // Unknown result
         console.warn('⚠️ Unknown twitter_result:', twitterResult);
         cleanUrlParams();
         
@@ -468,53 +301,20 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         console.error('❌ Error processing Twitter callback:', error);
         cleanUrlParams();
         
-        toast.error(
-          'Failed to process authentication. Please try again.',
-          { 
-            duration: 5000,
-            id: 'callback-error'
-          }
-        );
+        toast.error('Failed to process authentication. Please try again.', { duration: 5000 });
       }
     };
 
     handleTwitterCallback();
   }, [upsert, refetch, cleanUrlParams]);
 
-  // ===== AUTO-RECHECK ON TAB VISIBILITY =====
-  useEffect(() => {
-    if (xState !== 2) return;
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && !isRecheckingRef.current) {
-        console.log('👁️ Tab became visible (state 2), triggering recheck...');
-        
-        toast.loading('Checking if you followed...', { 
-          id: 'visibility-check',
-          duration: 2000 
-        });
-        
-        setTimeout(() => {
-          handleTwitterRecheckSilent();
-        }, 1500);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [xState]);
-
   // ===== INITIATE TWITTER OAUTH =====
   const handleFollowX = useCallback(async () => {
     if (!address || pending) return;
     
     callbackProcessedRef.current = false;
-    autoRecheckOnLoadRef.current = false;
-    
     setPending("x");
+    
     try {
       const res = await fetch(`/api/twitter/auth?address=${address}`, {
         method: "GET",
@@ -522,24 +322,15 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       });
       
       if (!res.ok) {
-        const txt = await res.text().catch(() => "no body");
-        console.error("Twitter auth request failed:", res.status, txt);
-        
-        try {
-          const errorData = JSON.parse(txt);
-          toast.error(errorData.message || "Failed to start X OAuth", { duration: 5000 });
-        } catch {
-          toast.error("Failed to start X OAuth", { duration: 5000 });
-        }
+        toast.error("Failed to start X OAuth", { duration: 5000 });
         setPending(null);
         return;
       }
       
-      const payload = await res.json().catch(() => null);
+      const payload = await res.json();
       
       if (!payload?.ok || !payload?.url) {
-        console.error("Invalid /api/twitter/auth response:", payload);
-        toast.error(payload?.message || "Invalid OAuth response", { duration: 5000 });
+        toast.error("Invalid OAuth response", { duration: 5000 });
         setPending(null);
         return;
       }
@@ -559,10 +350,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
 
   // ===== RECHECK TWITTER FOLLOW STATUS =====
   const handleTwitterRecheck = useCallback(async () => {
-    if (!address || pending || isRecheckingRef.current) return;
+    if (!address || pending) return;
     
     callbackProcessedRef.current = false;
-    isRecheckingRef.current = true;
     setPending("x");
     
     try {
@@ -574,21 +364,16 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       });
       
       if (!res.ok) {
-        const txt = await res.text().catch(() => "no body");
-        console.error("Twitter recheck auth failed:", res.status, txt);
         toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
         setPending(null);
-        isRecheckingRef.current = false;
         return;
       }
       
       const payload = await res.json();
       
       if (!payload?.ok || !payload?.url) {
-        console.error("Invalid recheck auth response:", payload);
-        toast.error(payload?.message || "Invalid OAuth response", { duration: 5000, id: 'recheck' });
+        toast.error("Invalid OAuth response", { duration: 5000, id: 'recheck' });
         setPending(null);
-        isRecheckingRef.current = false;
         return;
       }
       
@@ -599,50 +384,8 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       console.error("Twitter recheck error:", err);
       toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
       setPending(null);
-      isRecheckingRef.current = false;
     }
   }, [address, pending]);
-
-  // ===== SILENT RECHECK =====
-  const handleTwitterRecheckSilent = useCallback(async () => {
-    if (!address || isRecheckingRef.current) return;
-    
-    callbackProcessedRef.current = false;
-    isRecheckingRef.current = true;
-    
-    try {
-      const res = await fetch(`/api/twitter/auth?address=${address}&recheck=true`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-      
-      if (!res.ok) {
-        console.error("Silent recheck failed:", res.status);
-        toast.dismiss('visibility-check');
-        toast.dismiss('auto-load-check');
-        isRecheckingRef.current = false;
-        return;
-      }
-      
-      const payload = await res.json();
-      
-      if (!payload?.ok || !payload?.url) {
-        console.error("Invalid silent recheck response:", payload);
-        toast.dismiss('visibility-check');
-        toast.dismiss('auto-load-check');
-        isRecheckingRef.current = false;
-        return;
-      }
-      
-      window.location.assign(payload.url);
-      
-    } catch (err) {
-      console.error("Silent recheck error:", err);
-      toast.dismiss('visibility-check');
-      toast.dismiss('auto-load-check');
-      isRecheckingRef.current = false;
-    }
-  }, [address]);
 
   // ===== MODAL: User clicked "I Followed Them" =====
   const handleModalFollowed = useCallback(() => {
@@ -676,14 +419,12 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       });
       
       if (!res.ok) {
-        const txt = await res.text().catch(() => "no body");
-        console.error("Telegram verify failed:", res.status, txt);
         toast.error("Telegram verification failed", { duration: 5000, id: 'telegram' });
         setPending(null);
         return;
       }
       
-      const data = await res.json().catch(() => null);
+      const data = await res.json();
       
       if (data?.verified) {
         await upsert.mutateAsync({ tgState: 3, refState: 1 });
@@ -714,15 +455,10 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       });
       
       if (!res.ok) {
-        const txt = await res.text().catch(() => "no body");
-        console.error("Referral request failed:", res.status, txt);
         toast.error("Failed to generate referral", { duration: 5000, id: 'referral' });
         setPending(null);
         return;
       }
-      
-      const referral = await res.json().catch(() => null);
-      console.log("Referral generated:", referral);
       
       await upsert.mutateAsync({ refState: 3 });
       toast.success("✅ Referral link generated!", { duration: 5000, id: 'referral' });
@@ -800,7 +536,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         onFollowed={handleModalFollowed}
         profileUrl={twitterModal.profileUrl}
         targetUsername={twitterModal.targetUsername}
-        authData={twitterModal.authData}
       />
     </>
   );
