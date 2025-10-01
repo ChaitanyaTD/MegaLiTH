@@ -13,13 +13,29 @@ if (!BOT_TOKEN || !GROUP_ID || !BACKEND_URL || !WEBHOOK_SECRET) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
+// Type definition for Telegram API invite link response
+type TelegramInviteResponse = {
+  ok: boolean;
+  result?: {
+    invite_link: string;
+    creator?: any;
+    creates_join_request?: boolean;
+    is_primary?: boolean;
+    is_revoked?: boolean;
+    expire_date?: number;
+    member_limit?: number;
+    pending_join_request_count?: number;
+  };
+  description?: string;
+};
+
 // /start handler — generates invite link
 bot.start(async (ctx) => {
   try {
-    const payload = ctx.startPayload; // user address if opened via deep link
+    const payload = ctx.startPayload; // optional: user address if opened via deep link
 
     if (payload) {
-      // optional: notify backend about who started the bot
+      // notify backend about who started the bot
       try {
         await fetch(`${BACKEND_URL}/api/telegram/start-callback`, {
           method: "POST",
@@ -34,14 +50,34 @@ bot.start(async (ctx) => {
       }
     }
 
-    // Generate one-time invite link (expires in 1 hour, 1 member)
-    const invite = await ctx.telegram.createChatInviteLink(GROUP_ID, {
-      expire_date: Math.floor(Date.now() / 1000) + 60 * 60,
-      member_limit: 1,
-    });
+    // ---- MANUAL API CALL (instead of ctx.telegram.createChatInviteLink) ----
+    const expireDate = Math.floor(Date.now() / 1000) + 60 * 60; // +1 hour
+
+    const inviteRes = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/createChatInviteLink`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: GROUP_ID,
+          expire_date: expireDate,
+          member_limit: 1,
+        }),
+      }
+    );
+
+    const inviteData = (await inviteRes.json()) as TelegramInviteResponse;
+
+    if (!inviteData.ok || !inviteData.result) {
+      console.error("Failed to create invite link:", inviteData);
+      await ctx.reply("❌ Failed to create invite link. Please try again later.");
+      return;
+    }
+
+    const inviteLink = inviteData.result.invite_link;
 
     await ctx.reply(
-      `✅ Click the link below to join the Telegram group:\n\n${invite.invite_link}\n\nThis link expires in 1 hour.`
+      `✅ Click the link below to join the Telegram group:\n\n${inviteLink}\n\nThis link expires in 1 hour.`
     );
   } catch (err) {
     console.error("Error in /start:", err);
