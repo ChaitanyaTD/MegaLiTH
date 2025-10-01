@@ -397,48 +397,33 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   }, [handleTwitterRecheck]);
 
   // ===== HANDLE TELEGRAM VERIFICATION =====
-  const handleJoinTG = async () => {
+const handleJoinTG = async () => {
     if (!address || pending) return;
     setPending("tg");
-    
+    toast.loading("Opening Telegram...", { id: "telegram" });
+
     try {
-      toast.loading('Verifying Telegram...', { id: 'telegram' });
-      
-      const telegramUserId = prompt("Enter your Telegram User ID for verification");
-      if (!telegramUserId) {
-        toast.dismiss('telegram');
-        toast.error("Telegram ID required", { duration: 3000 });
-        setPending(null);
-        return;
-      }
-      
-      const res = await fetch("/api/telegram/verify", {
+      const res = await fetch("/api/telegram/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ address, telegramUserId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
       });
-      
-      if (!res.ok) {
-        toast.error("Telegram verification failed", { duration: 5000, id: 'telegram' });
-        setPending(null);
-        return;
-      }
-      
-      const data = await res.json();
-      
-      if (data?.verified) {
-        await upsert.mutateAsync({ tgState: 3, refState: 1 });
-        toast.success("✅ Telegram verified! Referral link unlocked.", { duration: 5000, id: 'telegram' });
-      } else {
-        toast.error("Telegram not verified", { duration: 5000, id: 'telegram' });
-      }
+
+      if (!res.ok) throw new Error("Failed to get Telegram link");
+
+      const { startUrl } = await res.json();
+      window.open(startUrl, "_blank");
+
+      toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
     } catch (err) {
       console.error(err);
-      toast.error("Telegram verification failed", { duration: 5000, id: 'telegram' });
+      toast.error("Failed to open Telegram bot.", { id: "telegram" });
     } finally {
       setPending(null);
     }
   };
+
+
 
   // ===== HANDLE REFERRAL GENERATION =====
   const handleGetReferral = async () => {
