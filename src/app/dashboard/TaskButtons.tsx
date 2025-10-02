@@ -398,30 +398,41 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
 
   // ===== HANDLE TELEGRAM VERIFICATION =====
 const handleJoinTG = async () => {
-    if (!address || pending) return;
-    setPending("tg");
-    toast.loading("Opening Telegram...", { id: "telegram" });
+  if (!address || pending) return;
+  setPending("tg");
+  toast.loading("Opening Telegram...", { id: "telegram" });
 
-    try {
-      const res = await fetch("/api/telegram/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address }),
-      });
+  try {
+    const res = await fetch("/api/telegram/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    });
 
-      if (!res.ok) throw new Error("Failed to get Telegram link");
+    if (!res.ok) throw new Error("Failed to get Telegram link");
 
-      const { startUrl } = await res.json();
-      window.open(startUrl, "_blank");
+    const { startUrl } = await res.json();
+    window.open(startUrl, "_blank");
 
-      toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to open Telegram bot.", { id: "telegram" });
-    } finally {
-      setPending(null);
-    }
-  };
+    toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
+
+    // start polling
+    const interval = setInterval(async () => {
+      const r = await fetch(`/api/progress?address=${address}`);
+      const data = await r.json();
+      if (data.tgState === 2) {
+        toast.success("Telegram verified ✅");
+        clearInterval(interval);
+        setPending(null);
+      }
+    }, 5000);
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to open Telegram bot.", { id: "telegram" });
+    setPending(null);
+  }
+};
+
 
 
 

@@ -1,5 +1,5 @@
+// app/api/telegram/complete/route.ts
 import { NextRequest } from "next/server";
-import fetch from "node-fetch";
 import { prisma } from "@/lib/prisma";
 
 type TelegramChatMemberResponse = {
@@ -9,7 +9,7 @@ type TelegramChatMemberResponse = {
 
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-webhook-secret");
-  if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET)
+  if (secret !== process.env.STATE_SECRET)
     return new Response("Unauthorized", { status: 401 });
 
   const { telegramId } = await req.json();
@@ -38,7 +38,10 @@ export async function POST(req: NextRequest) {
   const progress = await prisma.userProgress.findFirst({ where: { telegramId } });
   if (!progress) return new Response("User progress not found", { status: 404 });
 
-  await prisma.userProgress.update({ where: { userId: progress.userId }, data: { tgState: 2 } });
+  await prisma.userProgress.update({
+    where: { userId: progress.userId },
+    data: { tgState: 2 }, // 2 = verified
+  });
 
   return new Response(JSON.stringify({ verified: true }), {
     status: 200,
