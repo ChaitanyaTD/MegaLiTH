@@ -2,12 +2,16 @@
   "name": "megalith-app",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "prisma generate && prisma migrate deploy && next build --turbopack",
     "postinstall": "prisma generate",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "setup-webhook": "tsx hooks/setup-webhook.ts",
+    "delete-webhook": "curl https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook",
+    "webhook-info": "curl https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",
@@ -21,6 +25,7 @@
     "react-dom": "19.1.0",
     "react-hot-toast": "^2.6.0",
     "telegraf": "^4.16.3",
+    "ts-node": "^10.9.2",
     "viem": "^2.37.8",
     "wagmi": "^2.17.2"
   },
