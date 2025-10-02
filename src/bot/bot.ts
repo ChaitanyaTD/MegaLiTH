@@ -29,13 +29,20 @@ if (!BOT_TOKEN.match(/^\d+:[A-Za-z0-9_-]{35}$/)) {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
-
+type TelegramUser = {
+  id: number;
+  is_bot: boolean;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+};
 // Type definitions
 type TelegramInviteResponse = {
   ok: boolean;
   result?: {
     invite_link: string;
-    creator?: any;
+    creator?: TelegramUser;
     creates_join_request?: boolean;
     is_primary?: boolean;
     is_revoked?: boolean;
@@ -54,7 +61,7 @@ type BackendResponse = {
 // Helper function to call backend
 async function notifyBackend(
   endpoint: string,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ): Promise<boolean> {
   try {
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -170,9 +177,9 @@ bot.on("chat_member", async (ctx) => {
       
       const success = await notifyBackend("/api/telegram/complete", {
         telegramId,
-        username: update.new_chat_member.user.username,
-        firstName: update.new_chat_member.user.first_name,
-        lastName: update.new_chat_member.user.last_name,
+        username: update.new_chat_member.user.username ?? null,
+        firstName: update.new_chat_member.user.first_name ?? null,
+        lastName: update.new_chat_member.user.last_name ?? null,
       });
 
       if (success) {
