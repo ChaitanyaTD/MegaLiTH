@@ -1,14 +1,36 @@
-// pages/api/telegram-webhook.ts (or app/api/telegram-webhook/route.ts for App Router)
+// bot.ts
+import "dotenv/config";
 import { Telegraf } from "telegraf";
-import type { NextApiRequest, NextApiResponse } from "next";
+import fetch from "node-fetch";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const GROUP_ID = process.env.TELEGRAM_GROUP_CHAT_ID!;
 const BACKEND_URL = process.env.NEXTAUTH_URL!;
 const WEBHOOK_SECRET = process.env.STATE_SECRET!;
 
+// Validate environment variables
+if (!BOT_TOKEN || !GROUP_ID || !BACKEND_URL || !WEBHOOK_SECRET) {
+  console.error("❌ Missing environment variables:");
+  console.error({
+    BOT_TOKEN: BOT_TOKEN ? "✓ Set" : "✗ Missing",
+    GROUP_ID: GROUP_ID ? "✓ Set" : "✗ Missing",
+    BACKEND_URL: BACKEND_URL ? "✓ Set" : "✗ Missing",
+    WEBHOOK_SECRET: WEBHOOK_SECRET ? "✓ Set" : "✗ Missing",
+  });
+  throw new Error("Missing environment variables for Telegram bot");
+}
+
+// Validate bot token format
+if (!BOT_TOKEN.match(/^\d+:[A-Za-z0-9_-]{35}$/)) {
+  console.error("❌ Invalid bot token format!");
+  console.error("Expected format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890");
+  console.error(`Received: ${BOT_TOKEN.substring(0, 10)}...`);
+  throw new Error("Invalid bot token format");
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
+// Type definitions
 type TelegramUser = {
   id: number;
   is_bot: boolean;
@@ -38,11 +60,15 @@ type BackendResponse = {
   message?: string;
 };
 
+// Helper function to call backend
 async function notifyBackend(
   endpoint: string,
   data: Record<string, unknown>
 ): Promise<boolean> {
   try {
+    console.log(`📤 Calling backend: ${BACKEND_URL}${endpoint}`);
+    console.log(`📦 Payload:`, data);
+
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: "POST",
       headers: {
@@ -53,20 +79,24 @@ async function notifyBackend(
     });
 
     if (!res.ok) {
-      console.error(`Backend ${endpoint} failed:`, res.status, res.statusText);
+      const errorText = await res.text();
+      console.error(`❌ Backend ${endpoint} failed:`, res.status, res.statusText);
+      console.error(`❌ Response body:`, errorText);
       return false;
     }
 
     const result = (await res.json()) as BackendResponse;
+    console.log(`✅ Backend response:`, result);
     return result.success ?? false;
   } catch (err) {
-    console.error(`Failed to notify backend at ${endpoint}:`, err);
+    console.error(`❌ Failed to notify backend at ${endpoint}:`, err);
     return false;
   }
 }
 
+// Helper function to create invite link
 async function createInviteLink(): Promise<string | null> {
-  const expireDate = Math.floor(Date.now() / 1000) + 3600; // +1 hour
+  const expireDate = Math.floor(Date.now() / 1000) + 3600; // +1 hour (3600 seconds)
 
   try {
     const inviteRes = await fetch(
@@ -85,35 +115,48 @@ async function createInviteLink(): Promise<string | null> {
     const inviteData = (await inviteRes.json()) as TelegramInviteResponse;
 
     if (!inviteData.ok || !inviteData.result) {
-      console.error("Failed to create invite link:", inviteData);
+      console.error("❌ Failed to create invite link:", inviteData);
       return null;
     }
 
+    console.log(`✅ Created invite link: ${inviteData.result.invite_link}`);
     return inviteData.result.invite_link;
   } catch (err) {
-    console.error("Error creating invite link:", err);
+    console.error("❌ Error creating invite link:", err);
     return null;
   }
 }
 
-// Bot handlers
+// /start handler — generates invite link
 bot.start(async (ctx) => {
   try {
     const payload = ctx.startPayload;
     const telegramId = ctx.from?.id;
+
+    console.log(`🤖 /start command received`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+    console.log(`📦 Payload: ${payload}`);
 
     if (!telegramId) {
       await ctx.reply("❌ Unable to identify user. Please try again.");
       return;
     }
 
+    // Notify backend about bot start
     if (payload) {
-      await notifyBackend("/api/telegram/start-callback", {
+      const success = await notifyBackend("/api/telegram/start-callback", {
         payload,
         telegramId,
       });
+
+      if (!success) {
+        console.error("❌ Failed to notify backend about bot start");
+        await ctx.reply("❌ Failed to link your account. Please try again.");
+        return;
+      }
     }
 
+    // Create invite link
     const inviteLink = await createInviteLink();
 
     if (!inviteLink) {
@@ -121,32 +164,49 @@ bot.start(async (ctx) => {
       return;
     }
 
+    // Send custom welcome message with invite link
     const welcomeMessage = `✅ Click the link below to join the Telegram group:\n\n${inviteLink}\n\n⏱️ This link expires in 1 hour and can only be used once.\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n🎯 *Telegram*\n*COURSES*\n🎓 Learn & Grow Hub 🚀\nWelcome to the ultimate learning space! 🌟\n📚 Free Courses | 🎓 Skill Development | 🔥 Exclusive Content\n✨ Follow us for daily updates and start learning for free.\n\nJoin now and elevate your skills! 🚀\n\n*REQUEST TO JOIN*`;
 
     await ctx.reply(welcomeMessage, { parse_mode: "Markdown" });
+    console.log(`✅ Sent invite link to user ${telegramId}`);
   } catch (err) {
-    console.error("Error in /start:", err);
+    console.error("❌ Error in /start:", err);
     await ctx.reply("❌ Something went wrong. Please contact support.");
   }
 });
 
+// Detect when a user joins the group
 bot.on("chat_member", async (ctx) => {
   try {
     const update = ctx.update.chat_member;
-    if (!update) return;
+    if (!update) {
+      console.log("⚠️ No chat_member update data");
+      return;
+    }
 
-    if (update.chat.id.toString() !== GROUP_ID.toString()) return;
+    console.log(`📥 Chat member update received`);
+    console.log(`💬 Chat ID: ${update.chat.id}`);
+    console.log(`🎯 Target Group ID: ${GROUP_ID}`);
+
+    // Only process updates for our target group
+    if (update.chat.id.toString() !== GROUP_ID.toString()) {
+      console.log(`⚠️ Ignoring update from different chat: ${update.chat.id}`);
+      return;
+    }
 
     const telegramId = update.new_chat_member.user.id;
     const oldStatus = update.old_chat_member.status;
     const newStatus = update.new_chat_member.status;
 
+    console.log(`👤 User ${telegramId} status change: ${oldStatus} → ${newStatus}`);
+
+    // Check if user actually joined (status changed from non-member to member)
     const joinedStatuses = ["member", "administrator", "creator"];
     const wasNotMember = !joinedStatuses.includes(oldStatus);
     const isNowMember = joinedStatuses.includes(newStatus);
 
     if (wasNotMember && isNowMember) {
-      console.log(`User ${telegramId} joined the group`);
+      console.log(`✅ User ${telegramId} joined the group!`);
       
       const success = await notifyBackend("/api/telegram/complete", {
         telegramId,
@@ -156,27 +216,35 @@ bot.on("chat_member", async (ctx) => {
       });
 
       if (success) {
-        console.log(`Successfully notified backend about user ${telegramId}`);
+        console.log(`✅ Successfully notified backend about user ${telegramId}`);
+      } else {
+        console.error(`❌ Failed to notify backend about user ${telegramId}`);
       }
+    } else {
+      console.log(`ℹ️ Status change doesn't qualify as a new join`);
     }
   } catch (err) {
-    console.error("Error in chat_member handler:", err);
+    console.error("❌ Error in chat_member handler:", err);
   }
 });
 
-// Webhook handler
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    if (req.method === "POST") {
-      await bot.handleUpdate(req.body);
-      res.status(200).json({ ok: true });
-    } else if (req.method === "GET") {
-      res.status(200).json({ status: "Telegram webhook is active" });
-    } else {
-      res.status(405).json({ error: "Method not allowed" });
-    }
-  } catch (err) {
-    console.error("Webhook error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-}
+// Graceful shutdown
+process.once("SIGINT", () => {
+  console.log("Received SIGINT, stopping bot...");
+  bot.stop("SIGINT");
+});
+
+process.once("SIGTERM", () => {
+  console.log("Received SIGTERM, stopping bot...");
+  bot.stop("SIGTERM");
+});
+
+// Start the bot
+bot.launch().then(() => {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("✅ Telegram bot started successfully");
+  console.log(`📱 Bot username: @${bot.botInfo?.username}`);
+  console.log(`👥 Target group ID: ${GROUP_ID}`);
+  console.log(`🔗 Backend URL: ${BACKEND_URL}`);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+});

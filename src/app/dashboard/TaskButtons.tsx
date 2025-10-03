@@ -416,16 +416,34 @@ const handleJoinTG = async () => {
 
     toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
 
-    // start polling
+    // Poll with manual verification
     const interval = setInterval(async () => {
-      const r = await fetch(`/api/progress?address=${address}`);
+      const r = await fetch("/api/telegram/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+      
       const data = await r.json();
-      if (data.tgState === 2) {
+      console.log("Verification status:", data);
+      
+      if (data.verified && data.tgState === 3) {
         toast.success("Telegram verified ✅");
         clearInterval(interval);
         setPending(null);
+        // Refresh the page data
+        window.location.reload(); // or use your state management
       }
-    }, 5000);
+    }, 2000);
+
+    // Clear interval after 10 minutes
+    setTimeout(() => {
+      clearInterval(interval);
+      if (pending === "tg") {
+        toast.error("Verification timeout. Please try again.");
+        setPending(null);
+      }
+    }, 600000); // 10 minutes
   } catch (err) {
     console.error(err);
     toast.error("Failed to open Telegram bot.", { id: "telegram" });
@@ -449,6 +467,7 @@ const handleJoinTG = async () => {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ address }),
       });
+      console.log("Referral response:", res);
       
       if (!res.ok) {
         toast.error("Failed to generate referral", { duration: 5000, id: 'referral' });
