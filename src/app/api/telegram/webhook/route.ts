@@ -4,24 +4,31 @@ import { telegramWebhookHandler } from "@/bot/webhook";
 
 // Minimal Node-like request for Telegraf
 interface MiniRequest {
-  body: any; // Use 'any' here to avoid type issues
+  body: Record<string, unknown>;
   headers: Record<string, string>;
   method: string;
   url: string;
 }
 
 // Minimal Node-like response for Telegraf
-class MiniResponse {
-  end(_: unknown) {}
-  setHeader(_: string, __: string) {}
-  getHeader(_: string) { return undefined; }
-  writeHead(_: number, __?: Record<string, string>) {}
+interface MiniResponse {
+  end(data?: unknown): void;
+  setHeader(name: string, value: string): void;
+  getHeader(name: string): string | undefined;
+  writeHead(statusCode: number, headers?: Record<string, string>): void;
+}
+
+class MiniResponseImpl implements MiniResponse {
+  end(_data?: unknown) {}
+  setHeader(_name: string, _value: string) {}
+  getHeader(_name: string) { return undefined; }
+  writeHead(_statusCode: number, _headers?: Record<string, string>) {}
 }
 
 export async function POST(req: NextRequest) {
   try {
     const bodyText = await req.text();
-    const body = JSON.parse(bodyText);
+    const body: Record<string, unknown> = JSON.parse(bodyText);
     const headers = Object.fromEntries(req.headers.entries());
 
     const nodeReq: MiniRequest = {
@@ -31,10 +38,14 @@ export async function POST(req: NextRequest) {
       url: req.url,
     };
 
-    const nodeRes = new MiniResponse();
+    const nodeRes = new MiniResponseImpl();
 
     // Telegraf webhook handler
-    await telegramWebhookHandler(nodeReq as any, nodeRes as any, () => {});
+    await telegramWebhookHandler(
+      nodeReq as unknown as Parameters<typeof telegramWebhookHandler>[0],
+      nodeRes as unknown as Parameters<typeof telegramWebhookHandler>[1],
+      () => {}
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {
