@@ -26,8 +26,8 @@ model UserProgress {
   referralCode     String?
   twitterId        String?  @unique
   twitterUserId    String?
-  telegramId       String?  @unique  // Changed from Int? to String?
-  telegramUsername String?             // Optional: add this to store username
+  telegramId       BigInt?   
+  telegramUsername String?            
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
