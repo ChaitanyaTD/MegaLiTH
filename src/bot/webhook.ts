@@ -1,6 +1,5 @@
-// src/bot/webhook.ts
+import "dotenv/config";
 import { Telegraf } from "telegraf";
-import fetch from "node-fetch";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const GROUP_ID = process.env.TELEGRAM_GROUP_CHAT_ID!;
@@ -8,15 +7,13 @@ const BACKEND_URL = process.env.NEXTAUTH_URL!;
 const WEBHOOK_SECRET = process.env.STATE_SECRET!;
 
 if (!BOT_TOKEN || !GROUP_ID || !BACKEND_URL || !WEBHOOK_SECRET) {
-  throw new Error("Missing required environment variables for Telegram bot");
+  throw new Error("Missing required env variables for Telegram bot");
 }
 
-const bot = new Telegraf(BOT_TOKEN);
+export const bot = new Telegraf(BOT_TOKEN);
 
-// --- Helper to notify backend ---
-type BackendResponse = { success: boolean; message?: string };
-
-async function notifyBackend(endpoint: string, data: Record<string, unknown>): Promise<boolean> {
+// Helper: Notify backend
+async function notifyBackend(endpoint: string, data: Record<string, unknown>) {
   try {
     const res = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: "POST",
@@ -27,38 +24,30 @@ async function notifyBackend(endpoint: string, data: Record<string, unknown>): P
       body: JSON.stringify(data),
     });
 
-    const text = await res.text();
-    let result: BackendResponse;
-    try {
-      result = JSON.parse(text);
-    } catch {
-      result = { success: false, message: text };
-    }
-
-    return result.success ?? false;
+    const json = await res.json();
+    return json.success === true;
   } catch (err) {
-    console.error("❌ Failed to notify backend:", err);
+    console.error("❌ Backend notification failed:", err);
     return false;
   }
 }
 
-// --- Helper to create single-use invite link ---
+// Helper: Create one-time invite link
 async function createInviteLink(): Promise<string | null> {
-  try {
-    const expireDate = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createChatInviteLink`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: GROUP_ID,
-        expire_date: expireDate,
-        member_limit: 1,
-      }),
-    });
+  const expireDate = Math.floor(Date.now() / 1000) + 3600; // 1 hour
 
-    const data = await res.json() as { ok: boolean; result?: { invite_link: string } };
-    if (data.ok && data.result) return data.result.invite_link;
-    console.error("❌ Failed to create invite link", data);
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/createChatInviteLink`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: GROUP_ID, expire_date: expireDate, member_limit: 1 }),
+      }
+    );
+    const data = await res.json();
+    if (data.ok && data.result?.invite_link) return data.result.invite_link;
+    console.error("❌ Failed to create invite link:", data);
     return null;
   } catch (err) {
     console.error("❌ Error creating invite link:", err);
@@ -66,20 +55,22 @@ async function createInviteLink(): Promise<string | null> {
   }
 }
 
-// --- /start handler ---
+// /start command
 bot.start(async (ctx) => {
-  const telegramId = ctx.from?.id;
   const payload = ctx.startPayload;
+  const telegramId = ctx.from?.id;
 
   if (!telegramId) {
     await ctx.reply("❌ Unable to identify user. Please try again.");
     return;
   }
 
-  console.log("🤖 /start received", { telegramId, payload });
-
   if (payload) {
-    const success = await notifyBackend("/api/telegram/start-callback", { payload, telegramId });
+    const success = await notifyBackend("/api/telegram/start-callback", {
+      payload,
+      telegramId,
+    });
+
     if (!success) {
       await ctx.reply("❌ Failed to link your account. Please try again.");
       return;
@@ -88,16 +79,17 @@ bot.start(async (ctx) => {
 
   const inviteLink = await createInviteLink();
   if (!inviteLink) {
-    await ctx.reply("❌ Failed to create invite link. Please try later.");
+    await ctx.reply("❌ Failed to create invite link. Please try again later.");
     return;
   }
 
-  const welcomeMessage = `✅ Click to join the Telegram group:\n\n${inviteLink}\n\n⏱️ Expires in 1 hour.`;
-  await ctx.reply(welcomeMessage);
-  console.log(`✅ Invite link sent to ${telegramId}`);
+  await ctx.reply(
+    `✅ Click to join group:\n\n${inviteLink}\n\n⏱️ Expires in 1 hour, one-time use.`,
+    { parse_mode: "Markdown" }
+  );
 });
 
-// --- chat_member handler ---
+// chat_member updates
 bot.on("chat_member", async (ctx) => {
   const update = ctx.update.chat_member;
   if (!update || update.chat.id.toString() !== GROUP_ID.toString()) return;
@@ -111,7 +103,6 @@ bot.on("chat_member", async (ctx) => {
   const isNowMember = joinedStatuses.includes(newStatus);
 
   if (wasNotMember && isNowMember) {
-    console.log(`✅ User ${telegramId} joined the group`);
     await notifyBackend("/api/telegram/complete", {
       telegramId,
       username: update.new_chat_member.user.username ?? null,
@@ -120,6 +111,3 @@ bot.on("chat_member", async (ctx) => {
     });
   }
 });
-
-// --- Export webhook callback for Vercel ---
-export const telegramWebhookHandler = bot.webhookCallback("/api/telegram/webhook");
