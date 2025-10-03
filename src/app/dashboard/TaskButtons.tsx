@@ -532,13 +532,14 @@ const handleJoinTG = async () => {
           {getXButtonText()}
         </Btn>
         
-        <Btn 
-          state={pending === "tg" ? 0 : actualTgState} 
-          onClick={actualTgState === 1 ? handleJoinTG : undefined}
-          loading={pending === "tg"}
-        >
-          {tgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
-        </Btn>
+       <Btn 
+  state={pending === "tg" ? 2 : actualTgState} 
+  onClick={actualTgState === 1 ? handleJoinTG : undefined} 
+  loading={pending === "tg"}
+>
+  {actualTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
+</Btn>
+
         
         <Btn 
           state={pending === "ref" ? 0 : actualRefState} 

@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "public"."User" (
+CREATE TABLE "User" (
     "id" SERIAL NOT NULL,
     "address" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -9,7 +9,7 @@ CREATE TABLE "public"."User" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."UserProgress" (
+CREATE TABLE "UserProgress" (
     "id" SERIAL NOT NULL,
     "userId" INTEGER NOT NULL,
     "xState" INTEGER NOT NULL DEFAULT 1,
@@ -18,7 +18,8 @@ CREATE TABLE "public"."UserProgress" (
     "referralCode" TEXT,
     "twitterId" TEXT,
     "twitterUserId" TEXT,
-    "telegramId" INTEGER,
+    "telegramId" BIGINT,
+    "telegramUsername" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -26,16 +27,13 @@ CREATE TABLE "public"."UserProgress" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_address_key" ON "public"."User"("address");
+CREATE UNIQUE INDEX "User_address_key" ON "User"("address");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserProgress_userId_key" ON "public"."UserProgress"("userId");
+CREATE UNIQUE INDEX "UserProgress_userId_key" ON "UserProgress"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserProgress_twitterId_key" ON "public"."UserProgress"("twitterId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "UserProgress_telegramId_key" ON "public"."UserProgress"("telegramId");
+CREATE UNIQUE INDEX "UserProgress_twitterId_key" ON "UserProgress"("twitterId");
 
 -- AddForeignKey
-ALTER TABLE "public"."UserProgress" ADD CONSTRAINT "UserProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserProgress" ADD CONSTRAINT "UserProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
