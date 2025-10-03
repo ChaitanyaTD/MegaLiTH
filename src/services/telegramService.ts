@@ -20,7 +20,7 @@ export async function verifyTelegram(address: string, telegramId: number) {
 
     await prisma.userProgress.update({
       where: { userId: user.id },
-      data: { tgState: 2, telegramId },
+data: { tgState: 2, telegramId: BigInt(telegramId) },
     });
   }
 
