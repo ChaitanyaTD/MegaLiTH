@@ -162,7 +162,7 @@ export async function GET(req: NextRequest) {
 
     console.log(`🎯 Target account: @${targetUsername || 'Unknown'} (${TARGET_TWITTER_ID})`);
 
-    // STEP 4: Check for self-follow
+    // STEP 4: Check for self-follow (user is the target account owner)
     const isSelfFollow = twitterUserId === TARGET_TWITTER_ID;
     
     if (isSelfFollow) {
@@ -174,8 +174,7 @@ export async function GET(req: NextRequest) {
       const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
         twitter_result: "self_account",
         username: twitterUsername,
-        target_username: targetUsername || "",
-        toast_message: `You are the target account owner (@${twitterUsername}). Telegram unlocked!`
+        toast_message: `You are the target account owner. Telegram unlocked!`
       });
       
       return Response.redirect(redirectUrl);
@@ -218,22 +217,25 @@ export async function GET(req: NextRequest) {
         twitter_result: "following",
         username: twitterUsername,
         target_username: targetUsername || "",
-        toast_message: `✅ Following @${targetUsername} - Telegram unlocked!`
+        toast_message: recheck 
+          ? `✅ Follow verified! Telegram unlocked.`
+          : `✅ Already following @${targetUsername}! Telegram unlocked.`
       });
       
       return Response.redirect(redirectUrl);
     } else {
-      // User is NOT following - show modal to follow
+      // User is NOT following - redirect to Twitter profile to follow
       console.log(`❌ NOT FOLLOWING: @${twitterUsername} needs to follow @${targetUsername}`);
       
+      const profileUrl = `https://twitter.com/${targetUsername}`;
+      
+      // Open Twitter profile in new tab and redirect to dashboard with instructions
       const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
-        twitter_result: recheck ? "still_not_following" : "not_following",
+        twitter_result: "not_following",
         username: twitterUsername,
         target_username: targetUsername || "",
-        profile_url: `https://twitter.com/${targetUsername}`,
-        toast_message: recheck 
-          ? `Still not following @${targetUsername}. Please follow to continue.`
-          : `Connected as @${twitterUsername}. Follow @${targetUsername} to unlock Telegram.`
+        profile_url: profileUrl,
+        toast_message: `Connected as @${twitterUsername}. Opening @${targetUsername} profile - please follow to continue.`
       });
       
       return Response.redirect(redirectUrl);

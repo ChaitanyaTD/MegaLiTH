@@ -48,109 +48,11 @@ function Btn({
   );
 }
 
-// ===== TWITTER FOLLOW MODAL =====
-function TwitterFollowModal({ 
-  isOpen, 
-  onClose, 
-  onFollowed, 
-  profileUrl, 
-  targetUsername
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onFollowed: () => void;
-  profileUrl?: string;
-  targetUsername?: string;
-}) {
-  const [isFollowing, setIsFollowing] = useState(false);
-
-  const handleOpenProfile = () => {
-    if (profileUrl) {
-      window.open(profileUrl, '_blank', 'noopener,noreferrer');
-      
-      toast.success(`Profile opened! Follow @${targetUsername} and come back to verify.`, {
-        duration: 5000,
-        icon: '👀'
-      });
-    }
-  };
-
-  const handleManualFollow = () => {
-    setIsFollowing(true);
-    toast.loading('Verifying follow status...', { id: 'manual-check' });
-    
-    setTimeout(() => {
-      toast.dismiss('manual-check');
-      onFollowed();
-    }, 1000);
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Follow Required
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-2xl leading-none"
-          >
-            ×
-          </button>
-        </div>
-        
-        <div className="space-y-4">
-          <p className="text-gray-600 dark:text-gray-400">
-            Please follow @{targetUsername} on X (Twitter) to unlock Telegram.
-          </p>
-          
-          {profileUrl && (
-            <button
-              onClick={handleOpenProfile}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-            >
-              <span>Open @{targetUsername} Profile</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </button>
-          )}
-          
-          <div className="flex space-x-3">
-            <button
-              onClick={handleManualFollow}
-              disabled={isFollowing}
-              className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isFollowing ? 'Checking...' : 'I Followed Them'}
-            </button>
-            
-            <button
-              onClick={onClose}
-              className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              Later
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ===== MAIN TASK BUTTONS COMPONENT =====
 export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const { address } = useAccount();
   const { data, upsert, refetch } = useProgress();
   const [pending, setPending] = useState<null | "x" | "tg" | "ref">(null);
-  const [twitterModal, setTwitterModal] = useState<{
-    isOpen: boolean;
-    profileUrl?: string;
-    targetUsername?: string;
-  }>({ isOpen: false });
 
   const callbackProcessedRef = useRef(false);
 
@@ -221,7 +123,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           return;
         }
         
-        // CASE 2: Successfully following - Enable Telegram
+        // CASE 2: Successfully following (including already following before auth)
         if (twitterResult === 'following') {
           console.log('✅ Follow verified - enabling Telegram');
           
@@ -236,52 +138,28 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           return;
         }
         
-        // CASE 3: Not following yet - Show modal
+        // CASE 3: Not following - Open Twitter profile and enable recheck button
         if (twitterResult === 'not_following') {
-          console.log('❌ Not following - showing modal');
+          console.log('❌ Not following - opening profile and enabling recheck');
           
           await upsert.mutateAsync({ xState: 2 });
           await refetch();
-          cleanUrlParams();
           
-          if (targetUsername && profileUrl) {
-            setTwitterModal({
-              isOpen: true,
-              profileUrl,
-              targetUsername
-            });
-            
-            toast.success(
-              toastMessage || `Connected as @${username}. Please follow @${targetUsername}.`,
-              { duration: 5000, icon: '👋' }
-            );
-          }
-          return;
-        }
-        
-        // CASE 4: Still not following after recheck
-        if (twitterResult === 'still_not_following') {
-          console.log('❌ Still not following');
-          
-          await refetch();
-          cleanUrlParams();
-          
-          if (targetUsername && profileUrl) {
-            setTwitterModal({
-              isOpen: true,
-              profileUrl,
-              targetUsername
-            });
+          // Open Twitter profile in new tab
+          if (profileUrl) {
+            window.open(profileUrl, '_blank', 'noopener,noreferrer');
           }
           
-          toast.error(
-            toastMessage || `Still not following @${targetUsername}. Please follow to continue.`,
-            { duration: 6000 }
+          cleanUrlParams();
+          
+          toast(
+            `Connected as @${username}. Follow @${targetUsername} and click the X button again to verify.`,
+            { duration: 8000, icon: '👋' }
           );
           return;
         }
         
-        // CASE 5: Error
+        // CASE 4: Error
         if (twitterResult === 'error') {
           console.error('❌ Twitter OAuth error');
           cleanUrlParams();
@@ -308,7 +186,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     handleTwitterCallback();
   }, [upsert, refetch, cleanUrlParams]);
 
-  // ===== INITIATE TWITTER OAUTH =====
+  // ===== INITIATE TWITTER OAUTH (Initial Authentication) =====
   const handleFollowX = useCallback(async () => {
     if (!address || pending) return;
     
@@ -378,7 +256,10 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       }
       
       toast.dismiss('recheck');
-      window.location.assign(payload.url);
+      
+      setTimeout(() => {
+        window.location.assign(payload.url);
+      }, 500);
       
     } catch (err) {
       console.error("Twitter recheck error:", err);
@@ -387,72 +268,59 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   }, [address, pending]);
 
-  // ===== MODAL: User clicked "I Followed Them" =====
-  const handleModalFollowed = useCallback(() => {
-    setTwitterModal(prev => ({ ...prev, isOpen: false }));
-    
-    setTimeout(() => {
-      handleTwitterRecheck();
-    }, 500);
-  }, [handleTwitterRecheck]);
-
   // ===== HANDLE TELEGRAM VERIFICATION =====
-const handleJoinTG = async () => {
-  if (!address || pending) return;
-  setPending("tg");
-  toast.loading("Opening Telegram...", { id: "telegram" });
+  const handleJoinTG = async () => {
+    if (!address || pending) return;
+    setPending("tg");
+    toast.loading("Opening Telegram...", { id: "telegram" });
 
-  try {
-    const res = await fetch("/api/telegram/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
-    });
-
-    if (!res.ok) throw new Error("Failed to get Telegram link");
-
-    const { startUrl } = await res.json();
-    window.open(startUrl, "_blank");
-
-    toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
-
-    // Poll with manual verification
-    const interval = setInterval(async () => {
-      const r = await fetch("/api/telegram/verify", {
+    try {
+      const res = await fetch("/api/telegram/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address }),
       });
-      
-      const data = await r.json();
-      console.log("Verification status:", data);
-      
-      if (data.verified && data.tgState === 3) {
-        toast.success("Telegram verified ✅");
+
+      if (!res.ok) throw new Error("Failed to get Telegram link");
+
+      const { startUrl } = await res.json();
+      window.open(startUrl, "_blank");
+
+      toast.success("Open Telegram bot and click Start to continue.", { id: "telegram" });
+
+      // Poll for verification
+      const interval = setInterval(async () => {
+        const r = await fetch("/api/telegram/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address }),
+        });
+        
+        const data = await r.json();
+        console.log("Verification status:", data);
+        
+        if (data.verified && data.tgState === 3) {
+          toast.success("Telegram verified ✅");
+          clearInterval(interval);
+          setPending(null);
+          await refetch();
+        }
+      }, 2000);
+
+      // Clear interval after 10 minutes
+      setTimeout(() => {
         clearInterval(interval);
-        setPending(null);
-        // Refresh the page data
-        window.location.reload(); // or use your state management
-      }
-    }, 2000);
-
-    // Clear interval after 10 minutes
-    setTimeout(() => {
-      clearInterval(interval);
-      if (pending === "tg") {
-        toast.error("Verification timeout. Please try again.");
-        setPending(null);
-      }
-    }, 600000); // 10 minutes
-  } catch (err) {
-    console.error(err);
-    toast.error("Failed to open Telegram bot.", { id: "telegram" });
-    setPending(null);
-  }
-};
-
-
-
+        if (pending === "tg") {
+          toast.error("Verification timeout. Please try again.");
+          setPending(null);
+        }
+      }, 600000); // 10 minutes
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to open Telegram bot.", { id: "telegram" });
+      setPending(null);
+    }
+  };
 
   // ===== HANDLE REFERRAL GENERATION =====
   const handleGetReferral = async () => {
@@ -467,7 +335,6 @@ const handleJoinTG = async () => {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ address }),
       });
-      console.log("Referral response:", res);
       
       if (!res.ok) {
         toast.error("Failed to generate referral", { duration: 5000, id: 'referral' });
@@ -476,6 +343,7 @@ const handleJoinTG = async () => {
       }
       
       await upsert.mutateAsync({ refState: 3 });
+      await refetch();
       toast.success("✅ Referral link generated!", { duration: 5000, id: 'referral' });
     } catch (err) {
       console.error(err);
@@ -487,7 +355,7 @@ const handleJoinTG = async () => {
 
   // ===== GET BUTTON TEXT =====
   const getXButtonText = () => {
-    if (pending === "x") return "Checking...";
+    if (pending === "x") return xState === 2 ? "Verifying..." : "Checking...";
     
     switch (xState) {
       case 0:
@@ -522,41 +390,30 @@ const handleJoinTG = async () => {
   const actualRefState = disabled ? 0 : (tgState === 3 ? Math.max(refState, 1) : 0);
 
   return (
-    <>
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
-        <Btn 
-          state={disabled ? 0 : xState} 
-          onClick={getXButtonAction()}
-          loading={pending === "x"}
-        >
-          {getXButtonText()}
-        </Btn>
-        
-       <Btn 
-  state={pending === "tg" ? 2 : actualTgState} 
-  onClick={actualTgState === 1 ? handleJoinTG : undefined} 
-  loading={pending === "tg"}
->
-  {actualTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
-</Btn>
-
-        
-        <Btn 
-          state={pending === "ref" ? 0 : actualRefState} 
-          onClick={actualRefState === 1 ? handleGetReferral : undefined}
-          loading={pending === "ref"}
-        >
-          {refState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
-        </Btn>
-      </div>
-
-      <TwitterFollowModal
-        isOpen={twitterModal.isOpen}
-        onClose={() => setTwitterModal(prev => ({ ...prev, isOpen: false }))}
-        onFollowed={handleModalFollowed}
-        profileUrl={twitterModal.profileUrl}
-        targetUsername={twitterModal.targetUsername}
-      />
-    </>
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
+      <Btn 
+        state={disabled ? 0 : xState} 
+        onClick={getXButtonAction()}
+        loading={pending === "x"}
+      >
+        {getXButtonText()}
+      </Btn>
+      
+      <Btn 
+        state={pending === "tg" ? 2 : actualTgState} 
+        onClick={actualTgState === 1 ? handleJoinTG : undefined} 
+        loading={pending === "tg"}
+      >
+        {actualTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
+      </Btn>
+      
+      <Btn 
+        state={pending === "ref" ? 0 : actualRefState} 
+        onClick={actualRefState === 1 ? handleGetReferral : undefined}
+        loading={pending === "ref"}
+      >
+        {refState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
+      </Btn>
+    </div>
   );
 }
