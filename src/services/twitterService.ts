@@ -257,7 +257,7 @@ export async function markTwitterPendingVerification(
   address: string,
   twitterUsername: string,
   twitterUserId: string,
-  refreshToken?: string,
+  refreshToken: string | null | undefined,
   isVerified: boolean = false // true for self-follow
 ) {
   const user = await prisma.user.findUnique({ where: { address } });
@@ -269,7 +269,7 @@ export async function markTwitterPendingVerification(
     tgState: number;
     twitterId: string;
     twitterUserId: string;
-    twitterRefreshToken?: string;
+    twitterRefreshToken?: string | null;
   } = {
     xState: 3, // Mark as complete (optimistically)
     xVerified: isVerified, // false = pending verification, true = self-follow
@@ -278,6 +278,7 @@ export async function markTwitterPendingVerification(
     twitterUserId,
   };
 
+  // Only set refresh token if it exists
   if (refreshToken) {
     updateData.twitterRefreshToken = refreshToken;
   }

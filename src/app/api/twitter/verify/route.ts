@@ -58,6 +58,13 @@ export async function POST(req: NextRequest) {
       const { twitterUserId, twitterId, twitterRefreshToken, userId } = userProgress;
 
       try {
+        // Skip if missing required data
+        if (!twitterUserId || !twitterId || !twitterRefreshToken) {
+          console.log(`Skipping user ${userId} - missing data`);
+          results.errors++;
+          continue;
+        }
+
         console.log(`Checking @${twitterId} (${twitterUserId})...`);
 
         // Skip if self-follow (should already be verified, but safety check)

@@ -12,6 +12,7 @@ export type ProgressRecord = {
   referralCode?: string | null;
   createdAt: string;
   updatedAt: string;
+  xVerified: boolean;
 } | null;
 
 export type TaskState = 0 | 1 | 2;
