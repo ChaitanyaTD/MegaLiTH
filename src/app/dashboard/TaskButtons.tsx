@@ -108,6 +108,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       const profileUrl = urlParams.get('profile_url');
       const toastMessage = urlParams.get('toast_message');
       
+      // Clean URL params first, before any async operations
+      cleanUrlParams();
+      
       try {
         // CASE 1: Self-account (target account owner) - Mark as complete and enable Telegram
         if (twitterResult === 'self_account') {
@@ -115,7 +118,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           
           await upsert.mutateAsync({ xState: 3, tgState: 1 });
           await refetch();
-          cleanUrlParams();
           
           toast.success(
             toastMessage || `You are the target account owner! Telegram unlocked.`,
@@ -130,7 +132,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           
           await upsert.mutateAsync({ xState: 3, tgState: 1 });
           await refetch();
-          cleanUrlParams();
           
           toast.success(
             toastMessage || `✅ Following @${targetUsername} - Telegram unlocked!`,
@@ -152,10 +153,8 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
             twitterProfileOpenedRef.current = true;
           }
           
-          cleanUrlParams();
-          
           toast(
-            `Connected as @${username}. Follow @${targetUsername} in the opened tab. We'll auto-verify when you return.`,
+            toastMessage || `Connected as @${username}. Follow @${targetUsername} in the opened tab. We'll auto-verify when you return.`,
             { duration: 8000, icon: '👋' }
           );
           return;
@@ -164,7 +163,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         // CASE 4: Error
         if (twitterResult === 'error') {
           console.error('❌ Twitter OAuth error');
-          cleanUrlParams();
           
           toast.error(
             toastMessage || 'Twitter authentication failed. Please try again.',
@@ -175,11 +173,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
 
         // Unknown result
         console.warn('⚠️ Unknown twitter_result:', twitterResult);
-        cleanUrlParams();
         
       } catch (error) {
         console.error('❌ Error processing Twitter callback:', error);
-        cleanUrlParams();
         
         toast.error('Failed to process authentication. Please try again.', { duration: 5000 });
       }

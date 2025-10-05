@@ -36,19 +36,19 @@ function verifyState(state: string): CallbackStatePayload {
 }
 
 function buildRedirectUrl(
-  baseUrl: string,
   returnUrl: string,
   params: Record<string, string>
 ): string {
-  const redirectUrl = new URL(returnUrl, baseUrl);
+  const url = new URL(returnUrl, 'http://localhost'); // Dummy base for parsing
   
   Object.entries(params).forEach(([key, value]) => {
     if (value) {
-      redirectUrl.searchParams.set(key, value);
+      url.searchParams.set(key, value);
     }
   });
   
-  return redirectUrl.toString();
+  // Return relative path with query params
+  return `${url.pathname}${url.search}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -56,30 +56,28 @@ export async function GET(req: NextRequest) {
   const state = req.nextUrl.searchParams.get("state");
   const error = req.nextUrl.searchParams.get("error");
   
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  
   // Handle OAuth errors
   if (error) {
     const errorDescription = req.nextUrl.searchParams.get("error_description");
     console.error('❌ Twitter OAuth error:', error, errorDescription);
     
-    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+    const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
       toast_message: errorDescription || error
     });
     
-    return Response.redirect(redirectUrl);
+    return Response.redirect(new URL(redirectUrl, req.url));
   }
   
   if (!code || !state) {
     console.error('❌ Missing code or state in callback');
     
-    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+    const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
       toast_message: "Missing authorization code or state"
     });
     
-    return Response.redirect(redirectUrl);
+    return Response.redirect(new URL(redirectUrl, req.url));
   }
 
   let payload: CallbackStatePayload;
@@ -88,12 +86,12 @@ export async function GET(req: NextRequest) {
   } catch (e: unknown) {
     console.error('❌ State verification failed:', e);
     
-    const redirectUrl = buildRedirectUrl(baseUrl, "/dashboard", {
+    const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
       toast_message: "Invalid state parameter"
     });
     
-    return Response.redirect(redirectUrl);
+    return Response.redirect(new URL(redirectUrl, req.url));
   }
 
   const { address, codeVerifier, returnUrl = "/dashboard", recheck = false } = payload;
@@ -171,13 +169,13 @@ export async function GET(req: NextRequest) {
       // Target account owner - mark as completed (state 3) and enable Telegram
       await updateTwitterProgress(address, twitterUsername, twitterUserId, true);
       
-      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+      const redirectUrl = buildRedirectUrl(returnUrl, {
         twitter_result: "self_account",
         username: twitterUsername,
         toast_message: `You are the target account owner. Telegram unlocked!`
       });
       
-      return Response.redirect(redirectUrl);
+      return Response.redirect(new URL(redirectUrl, req.url));
     }
 
     // STEP 5: Check if user is following the target
@@ -213,7 +211,7 @@ export async function GET(req: NextRequest) {
       // User IS following - show success and enable Telegram
       console.log(`✅ SUCCESS: @${twitterUsername} is following @${targetUsername}`);
       
-      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+      const redirectUrl = buildRedirectUrl(returnUrl, {
         twitter_result: "following",
         username: twitterUsername,
         target_username: targetUsername || "",
@@ -222,7 +220,7 @@ export async function GET(req: NextRequest) {
           : `✅ Already following @${targetUsername}! Telegram unlocked.`
       });
       
-      return Response.redirect(redirectUrl);
+      return Response.redirect(new URL(redirectUrl, req.url));
     } else {
       // User is NOT following - redirect to Twitter profile to follow
       console.log(`❌ NOT FOLLOWING: @${twitterUsername} needs to follow @${targetUsername}`);
@@ -230,7 +228,7 @@ export async function GET(req: NextRequest) {
       const profileUrl = `https://twitter.com/${targetUsername}`;
       
       // Open Twitter profile in new tab and redirect to dashboard with instructions
-      const redirectUrl = buildRedirectUrl(baseUrl, returnUrl, {
+      const redirectUrl = buildRedirectUrl(returnUrl, {
         twitter_result: "not_following",
         username: twitterUsername,
         target_username: targetUsername || "",
@@ -238,7 +236,7 @@ export async function GET(req: NextRequest) {
         toast_message: `Connected as @${twitterUsername}. Opening @${targetUsername} profile - please follow to continue.`
       });
       
-      return Response.redirect(redirectUrl);
+      return Response.redirect(new URL(redirectUrl, req.url));
     }
 
   } catch (err: unknown) {
@@ -250,11 +248,11 @@ export async function GET(req: NextRequest) {
       errorMessage = err.message;
     }
     
-    const redirectUrl = buildRedirectUrl(baseUrl, returnUrl || "/dashboard", {
+    const redirectUrl = buildRedirectUrl(returnUrl || "/dashboard", {
       twitter_result: "error",
       toast_message: errorMessage
     });
 
-    return Response.redirect(redirectUrl);
+    return Response.redirect(new URL(redirectUrl, req.url));
   }
 }

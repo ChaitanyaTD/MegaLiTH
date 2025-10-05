@@ -4,6 +4,7 @@ import "./globals.css";
 import Providers from "./providers";
 import ThemeToggle from "./components/ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { Toaster } from 'react-hot-toast';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,10 +37,15 @@ export default function RootLayout({
             </div>
             <div className="flex items-center space-x-3">
               <ThemeToggle />
-              <ConnectButton accountStatus={{ smallScreen: "avatar", largeScreen: "full" }} showBalance={{ largeScreen: true, smallScreen: false }} />
+              <ConnectButton 
+                accountStatus={{ smallScreen: "avatar", largeScreen: "full" }} 
+                showBalance={{ largeScreen: true, smallScreen: false }} 
+              />
             </div>
           </header>
+
           <main>{children}</main>
+          <Toaster position="top-right" reverseOrder={false} />
         </Providers>
       </body>
     </html>
