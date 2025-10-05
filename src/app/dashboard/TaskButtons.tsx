@@ -55,6 +55,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const [pending, setPending] = useState<null | "x" | "tg" | "ref">(null);
 
   const callbackProcessedRef = useRef(false);
+  const twitterProfileOpenedRef = useRef(false);
 
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;
@@ -138,9 +139,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           return;
         }
         
-        // CASE 3: Not following - Open Twitter profile and enable recheck button
+        // CASE 3: Not following - Open Twitter profile and mark for auto-recheck
         if (twitterResult === 'not_following') {
-          console.log('❌ Not following - opening profile and enabling recheck');
+          console.log('❌ Not following - opening profile and marking for auto-recheck');
           
           await upsert.mutateAsync({ xState: 2 });
           await refetch();
@@ -148,12 +149,13 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
           // Open Twitter profile in new tab
           if (profileUrl) {
             window.open(profileUrl, '_blank', 'noopener,noreferrer');
+            twitterProfileOpenedRef.current = true;
           }
           
           cleanUrlParams();
           
           toast(
-            `Connected as @${username}. Follow @${targetUsername} and click the X button again to verify.`,
+            `Connected as @${username}. Follow @${targetUsername} in the opened tab. We'll auto-verify when you return.`,
             { duration: 8000, icon: '👋' }
           );
           return;
@@ -267,6 +269,31 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       setPending(null);
     }
   }, [address, pending]);
+
+  // ===== AUTO-RECHECK WHEN USER RETURNS TO TAB =====
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        xState === 2 &&
+        twitterProfileOpenedRef.current &&
+        !pending
+      ) {
+        console.log('👀 Tab visible - auto-rechecking follow status...');
+        twitterProfileOpenedRef.current = false; // Reset flag
+        
+        setTimeout(() => {
+          handleTwitterRecheck();
+        }, 1000);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [xState, pending, handleTwitterRecheck]);
 
   // ===== HANDLE TELEGRAM VERIFICATION =====
   const handleJoinTG = async () => {
