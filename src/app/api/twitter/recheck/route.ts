@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkFollowEnhanced, refreshAccessToken } from "@/services/twitterService";
 
+// Utility: Delay function
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function POST(req: NextRequest) {
   try {
     const { address } = await req.json();
@@ -94,6 +97,10 @@ export async function POST(req: NextRequest) {
         message: "Please re-authenticate to verify follow status"
       }, { status: 401 });
     }
+
+    // Add 3 second delay to allow Twitter's systems to propagate the follow
+    console.log("⏳ Waiting 3 seconds before checking follow status...");
+    await delay(3000);
 
     // Check follow status with fresh token
     console.log(`Checking if @${twitterId} follows @${TARGET_TWITTER_USERNAME || TARGET_TWITTER_ID}...`);

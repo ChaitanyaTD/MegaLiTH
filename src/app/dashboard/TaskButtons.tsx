@@ -57,9 +57,12 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const callbackProcessedRef = useRef(false);
   const twitterProfileOpenedRef = useRef(false);
 
+  // Get raw states from database
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;
   const refState = data?.refState ?? 0;
+
+  console.log('📊 Current states from DB:', { xState, tgState, refState, disabled });
 
   // ===== CLEAN URL PARAMETERS =====
   const cleanUrlParams = useCallback(() => {
@@ -389,11 +392,29 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   };
 
+  // ===== CALCULATE DISPLAY STATES =====
+  // Fixed logic: Only disable if prop is true, otherwise use actual DB states
+  const displayXState = disabled ? 0 : xState;
+  
+  // Telegram button: 
+  // - If disabled prop, show 0
+  // - If X is NOT complete (xState !== 3), show 0 (locked)
+  // - Otherwise show actual tgState, but minimum 1 (unlocked)
+  const displayTgState = disabled ? 0 : (xState === 3 ? Math.max(tgState, 1) : 0);
+  
+  // Referral button:
+  // - If disabled prop, show 0
+  // - If Telegram is NOT complete (tgState !== 3), show 0 (locked)
+  // - Otherwise show actual refState, but minimum 1 (unlocked)
+  const displayRefState = disabled ? 0 : (tgState === 3 ? Math.max(refState, 1) : 0);
+
+  console.log('🎨 Display states:', { displayXState, displayTgState, displayRefState });
+
   // ===== GET BUTTON TEXT =====
   const getXButtonText = () => {
-    if (pending === "x") return xState === 2 ? "Verifying..." : "Checking...";
+    if (pending === "x") return displayXState === 2 ? "Verifying..." : "Checking...";
     
-    switch (xState) {
+    switch (displayXState) {
       case 0:
         return "Follow Megalith on X (Locked)";
       case 1:
@@ -411,24 +432,20 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const getXButtonAction = () => {
     if (disabled) return undefined;
     
-    switch (xState) {
+    switch (displayXState) {
       case 1:
         return handleFollowX;
       case 2:
-        return handleTwitterRecheckDirect; // Changed to direct API check
+        return handleTwitterRecheckDirect;
       default:
         return undefined;
     }
   };
 
-  // Calculate actual button states based on prerequisites
-  const actualTgState = disabled ? 0 : (xState === 3 ? Math.max(tgState, 1) : 0);
-  const actualRefState = disabled ? 0 : (tgState === 3 ? Math.max(refState, 1) : 0);
-
   return (
     <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
       <Btn 
-        state={disabled ? 0 : xState} 
+        state={displayXState} 
         onClick={getXButtonAction()}
         loading={pending === "x"}
       >
@@ -436,19 +453,19 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       </Btn>
       
       <Btn 
-        state={pending === "tg" ? 2 : actualTgState} 
-        onClick={actualTgState === 1 ? handleJoinTG : undefined} 
+        state={pending === "tg" ? 2 : displayTgState} 
+        onClick={displayTgState === 1 ? handleJoinTG : undefined} 
         loading={pending === "tg"}
       >
-        {actualTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
+        {displayTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
       </Btn>
       
       <Btn 
-        state={pending === "ref" ? 0 : actualRefState} 
-        onClick={actualRefState === 1 ? handleGetReferral : undefined}
+        state={pending === "ref" ? 0 : displayRefState} 
+        onClick={displayRefState === 1 ? handleGetReferral : undefined}
         loading={pending === "ref"}
       >
-        {refState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
+        {displayRefState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
       </Btn>
     </div>
   );
