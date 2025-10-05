@@ -212,31 +212,38 @@ async function checkFollowV1(
   }
 }
 
-// === Dynamic polling follow check (replaces old enhanced check) ===
+// === Enhanced follow check (for cron job) ===
 export async function checkFollowEnhanced(
   accessToken: string,
   twitterUserId: string,
   targetId: string,
-  targetUsername?: string,
-  maxWaitTime: number = 40000, // 40s max wait
-  interval: number = 5000 // poll every 5s
+  targetUsername?: string
 ): Promise<FollowCheckResult> {
   if (twitterUserId === targetId) {
     return { isFollowing: true, needsManualCheck: false };
   }
 
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    const v2Result = await checkFollowV2FollowingWithPagination(accessToken, twitterUserId, targetId);
-    if (v2Result === true) return { isFollowing: true, needsManualCheck: false };
-
-    const v1Result = await checkFollowV1(accessToken, twitterUserId, targetId);
-    if (v1Result === true) return { isFollowing: true, needsManualCheck: false };
-
-    await delay(interval);
+  // Try v2 API first
+  const v2Result = await checkFollowV2FollowingWithPagination(accessToken, twitterUserId, targetId);
+  if (v2Result === true) {
+    return { isFollowing: true, needsManualCheck: false };
   }
 
+  // Try v1 API as fallback
+  const v1Result = await checkFollowV1(accessToken, twitterUserId, targetId);
+  if (v1Result === true) {
+    return { isFollowing: true, needsManualCheck: false };
+  }
+
+  // If both fail or return false
+  if (v2Result === false || v1Result === false) {
+    return {
+      isFollowing: false,
+      needsManualCheck: false,
+    };
+  }
+
+  // If both returned null (API errors)
   return {
     isFollowing: false,
     needsManualCheck: true,
@@ -245,69 +252,35 @@ export async function checkFollowEnhanced(
   };
 }
 
-// --- Backward compatible simple check ---
-export async function checkFollow(
-  accessToken: string,
-  twitterUserId: string,
-  targetId: string,
-  targetUsername?: string
-): Promise<boolean> {
-  const result = await checkFollowEnhanced(accessToken, twitterUserId, targetId, targetUsername);
-  return result.isFollowing;
-}
-
-// --- Manual follow verification ---
-export async function initiateManualFollowCheck(twitterUsername: string, targetUsername: string) {
-  const verificationCode = Math.random().toString(36).substring(2, 15);
-  return {
-    verificationCode,
-    instructions: `Please follow @${targetUsername} and then tweet: "Verification code: ${verificationCode}" to complete verification.`,
-    profileUrl: `https://twitter.com/${targetUsername}`,
-  };
-}
-
-// --- Verify via Tweet ---
-export async function verifyFollowByTweet(accessToken: string, twitterUserId: string, verificationCode: string): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://api.twitter.com/2/users/${twitterUserId}/tweets?max_results=10&tweet.fields=created_at,text`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-
-    if (!res.ok) return false;
-
-    const data = (await res.json()) as { data?: { text: string }[] };
-    return (data.data || []).some((tweet) => tweet.text.includes(verificationCode));
-  } catch {
-    return false;
-  }
-}
-
-// --- Update Twitter progress ---
-export async function updateTwitterProgressWithToken(
+// === Mark user as pending verification (OPTIMISTIC) ===
+export async function markTwitterPendingVerification(
   address: string,
   twitterUsername: string,
   twitterUserId: string,
-  isFollowing: boolean,
-  refreshToken?: string
+  refreshToken?: string,
+  isVerified: boolean = false // true for self-follow
 ) {
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
 
   const updateData: {
     xState: number;
-    tgState?: number;
+    xVerified: boolean;
+    tgState: number;
     twitterId: string;
     twitterUserId: string;
     twitterRefreshToken?: string;
   } = {
-    xState: isFollowing ? 3 : 2,
+    xState: 3, // Mark as complete (optimistically)
+    xVerified: isVerified, // false = pending verification, true = self-follow
+    tgState: 1, // Unlock Telegram immediately (optimistic)
     twitterId: twitterUsername,
     twitterUserId,
   };
 
-  if (isFollowing) updateData.tgState = 1;
-  if (refreshToken) updateData.twitterRefreshToken = refreshToken;
+  if (refreshToken) {
+    updateData.twitterRefreshToken = refreshToken;
+  }
 
   return prisma.userProgress.upsert({
     where: { userId: user.id },
@@ -319,7 +292,7 @@ export async function updateTwitterProgressWithToken(
   });
 }
 
-// --- Helper: get username by ID ---
+// === Get Twitter username by ID ===
 interface TwitterV2UserLookupResponse {
   data?: Array<{ id: string; username: string }>;
 }

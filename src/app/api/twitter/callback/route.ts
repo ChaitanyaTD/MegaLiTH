@@ -3,9 +3,7 @@ import { createHmac } from "crypto";
 import {
   exchangeCodeForToken,
   getTwitterUser,
-  updateTwitterProgressWithToken,
-  checkFollowEnhanced,
-  getTwitterUsernameById,
+  markTwitterPendingVerification,
   TwitterTokenResponse,
   TwitterUserResponse,
 } from "@/services/twitterService";
@@ -17,7 +15,6 @@ type CallbackStatePayload = {
   address: string;
   codeVerifier: string;
   returnUrl?: string;
-  recheck?: boolean;
   timestamp?: number;
 };
 
@@ -35,19 +32,11 @@ function verifyState(state: string): CallbackStatePayload {
   }
 }
 
-function buildRedirectUrl(
-  returnUrl: string,
-  params: Record<string, string>
-): string {
-  const url = new URL(returnUrl, 'http://localhost'); // Dummy base for parsing
-  
+function buildRedirectUrl(returnUrl: string, params: Record<string, string>): string {
+  const url = new URL(returnUrl, 'http://localhost');
   Object.entries(params).forEach(([key, value]) => {
-    if (value) {
-      url.searchParams.set(key, value);
-    }
+    if (value) url.searchParams.set(key, value);
   });
-  
-  // Return relative path with query params
   return `${url.pathname}${url.search}`;
 }
 
@@ -56,10 +45,9 @@ export async function GET(req: NextRequest) {
   const state = req.nextUrl.searchParams.get("state");
   const error = req.nextUrl.searchParams.get("error");
   
-  // Handle OAuth errors
   if (error) {
     const errorDescription = req.nextUrl.searchParams.get("error_description");
-    console.error('❌ Twitter OAuth error:', error, errorDescription);
+    console.error('Twitter OAuth error:', error, errorDescription);
     
     const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
@@ -70,8 +58,6 @@ export async function GET(req: NextRequest) {
   }
   
   if (!code || !state) {
-    console.error('❌ Missing code or state in callback');
-    
     const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
       toast_message: "Missing authorization code or state"
@@ -84,8 +70,7 @@ export async function GET(req: NextRequest) {
   try {
     payload = verifyState(state);
   } catch (e: unknown) {
-    console.error('❌ State verification failed:', e);
-    
+    console.error('State verification failed:', e);
     const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
       toast_message: "Invalid state parameter"
@@ -94,11 +79,11 @@ export async function GET(req: NextRequest) {
     return Response.redirect(new URL(redirectUrl, req.url));
   }
 
-  const { address, codeVerifier, returnUrl = "/dashboard", recheck = false } = payload;
+  const { address, codeVerifier, returnUrl = "/dashboard" } = payload;
 
   try {
     // STEP 1: Exchange code for token
-    console.log('🔄 Step 1: Exchanging code for token...');
+    console.log('Exchanging code for token...');
     let tokenResp: TwitterTokenResponse;
     
     try {
@@ -108,16 +93,15 @@ export async function GET(req: NextRequest) {
         throw new Error("No access token received");
       }
       
-      console.log('✅ Token exchange successful');
-      console.log('🔑 Refresh token available:', !!tokenResp.refresh_token);
+      console.log('Token exchange successful');
       
     } catch (tokenError) {
-      console.error('❌ Token exchange failed:', tokenError);
+      console.error('Token exchange failed:', tokenError);
       throw new Error(`Failed to exchange code for token: ${tokenError instanceof Error ? tokenError.message : String(tokenError)}`);
     }
 
     // STEP 2: Get authenticated user's Twitter info
-    console.log('🔄 Step 2: Getting Twitter user info...');
+    console.log('Getting Twitter user info...');
     let userResp: TwitterUserResponse;
     
     try {
@@ -127,133 +111,74 @@ export async function GET(req: NextRequest) {
         throw new Error("Missing username or user ID in API response");
       }
       
-      console.log('✅ User info retrieved successfully');
+      console.log('User info retrieved successfully');
       
     } catch (userError) {
-      console.error('❌ Failed to fetch Twitter user:', userError);
+      console.error('Failed to fetch Twitter user:', userError);
       throw new Error("Failed to fetch Twitter user information");
     }
     
     const twitterUsername = userResp.data.username;
     const twitterUserId = userResp.data.id;
 
-    console.log(`✅ Authenticated: @${twitterUsername} (${twitterUserId})`);
+    console.log(`Authenticated: @${twitterUsername} (${twitterUserId})`);
 
-    // STEP 3: Get target account information
     const TARGET_TWITTER_ID = process.env.TARGET_TWITTER_ID;
     const TARGET_TWITTER_USERNAME = process.env.TARGET_TWITTER_USERNAME;
     
     if (!TARGET_TWITTER_ID) {
-      console.error('❌ TARGET_TWITTER_ID not configured');
       throw new Error("Server configuration error: TARGET_TWITTER_ID not set");
     }
-    
-    let targetUsername: string | undefined = TARGET_TWITTER_USERNAME;
-    
-    if (!targetUsername) {
-      try {
-        const fetchedUsername = await getTwitterUsernameById(tokenResp.access_token, TARGET_TWITTER_ID);
-        targetUsername = fetchedUsername || undefined;
-      } catch (targetError) {
-        console.error('⚠️ Failed to fetch target username:', targetError);
-      }
-    }
 
-    console.log(`🎯 Target account: @${targetUsername || 'Unknown'} (${TARGET_TWITTER_ID})`);
-
-    // STEP 4: Check for self-follow (user is the target account owner)
+    // STEP 3: Check if self-follow
     const isSelfFollow = twitterUserId === TARGET_TWITTER_ID;
     
     if (isSelfFollow) {
-      console.log(`⚠️ SELF-FOLLOW: User @${twitterUsername} is the target account`);
+      console.log(`User @${twitterUsername} is the target account - marking as verified`);
       
-      // Target account owner - mark as completed (state 3) and enable Telegram
-      await updateTwitterProgressWithToken(
+      await markTwitterPendingVerification(
         address, 
         twitterUsername, 
         twitterUserId, 
-        true,
-        tokenResp.refresh_token
+        tokenResp.refresh_token,
+        true // isVerified = true for self
       );
       
       const redirectUrl = buildRedirectUrl(returnUrl, {
-        twitter_result: "self_account",
+        twitter_result: "success",
         username: twitterUsername,
-        toast_message: `You are the target account owner. Telegram unlocked!`
+        toast_message: `You are the target account owner. All tasks unlocked!`
       });
       
       return Response.redirect(new URL(redirectUrl, req.url));
     }
 
-    // STEP 5: Check if user is following the target
-    console.log(`🔄 Step 5: Checking if @${twitterUsername} follows @${targetUsername || TARGET_TWITTER_ID}...`);
-    let isFollowing = false;
+    // STEP 4: OPTIMISTIC APPROACH - Mark as complete immediately (pending verification)
+    console.log(`Marking @${twitterUsername} as complete (pending verification)`);
     
-    try {
-      const followResult = await checkFollowEnhanced(
-        tokenResp.access_token, 
-        twitterUserId, 
-        TARGET_TWITTER_ID,
-        targetUsername || undefined
-      );
-      
-      isFollowing = followResult.isFollowing;
-      
-      console.log('📊 Follow check result:', { isFollowing });
-      
-    } catch (followError) {
-      console.error('❌ Follow check failed:', followError);
-      // If check fails, assume not following
-      isFollowing = false;
-    }
-
-    // STEP 6: Update database based on follow status and STORE REFRESH TOKEN
-    await updateTwitterProgressWithToken(
+    await markTwitterPendingVerification(
       address, 
       twitterUsername, 
       twitterUserId, 
-      isFollowing,
-      tokenResp.refresh_token  // THIS IS THE KEY FIX - Store refresh token!
+      tokenResp.refresh_token,
+      false // isVerified = false, will be checked by cron
     );
-    
-    console.log(`💾 Database updated: following=${isFollowing}, refresh_token=${tokenResp.refresh_token ? 'stored' : 'not available'}`);
 
-    // STEP 7: Redirect based on follow status
+    // STEP 5: Open Twitter profile for user to follow
+    const profileUrl = `https://twitter.com/${TARGET_TWITTER_USERNAME}`;
     
-    if (isFollowing) {
-      // User IS following - show success and enable Telegram
-      console.log(`✅ SUCCESS: @${twitterUsername} is following @${targetUsername}`);
-      
-      const redirectUrl = buildRedirectUrl(returnUrl, {
-        twitter_result: "following",
-        username: twitterUsername,
-        target_username: targetUsername || "",
-        toast_message: recheck 
-          ? `✅ Follow verified! Telegram unlocked.`
-          : `✅ Already following @${targetUsername}! Telegram unlocked.`
-      });
-      
-      return Response.redirect(new URL(redirectUrl, req.url));
-    } else {
-      // User is NOT following - redirect to Twitter profile to follow
-      console.log(`❌ NOT FOLLOWING: @${twitterUsername} needs to follow @${targetUsername}`);
-      
-      const profileUrl = `https://twitter.com/${targetUsername}`;
-      
-      // Open Twitter profile in new tab and redirect to dashboard with instructions
-      const redirectUrl = buildRedirectUrl(returnUrl, {
-        twitter_result: "not_following",
-        username: twitterUsername,
-        target_username: targetUsername || "",
-        profile_url: profileUrl,
-        toast_message: `Connected as @${twitterUsername}. Opening @${targetUsername} profile - please follow to continue.`
-      });
-      
-      return Response.redirect(new URL(redirectUrl, req.url));
-    }
+    const redirectUrl = buildRedirectUrl(returnUrl, {
+      twitter_result: "success",
+      username: twitterUsername,
+      target_username: TARGET_TWITTER_USERNAME || "",
+      profile_url: profileUrl,
+      toast_message: `Connected as @${twitterUsername}! Follow @${TARGET_TWITTER_USERNAME} to complete. We'll verify in the background.`
+    });
+    
+    return Response.redirect(new URL(redirectUrl, req.url));
 
   } catch (err: unknown) {
-    console.error('❌ CRITICAL ERROR in Twitter callback:', err);
+    console.error('CRITICAL ERROR in Twitter callback:', err);
 
     let errorMessage = "An error occurred during Twitter authentication";
     

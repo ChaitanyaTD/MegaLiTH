@@ -55,14 +55,15 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const [pending, setPending] = useState<null | "x" | "tg" | "ref">(null);
 
   const callbackProcessedRef = useRef(false);
-  const twitterProfileOpenedRef = useRef(false);
+  const profileOpenedRef = useRef(false);
 
   // Get raw states from database
   const xState = data?.xState ?? 1;
   const tgState = data?.tgState ?? 0;
   const refState = data?.refState ?? 0;
+  const xVerified = data?.xVerified ?? false;
 
-  console.log('📊 Current states from DB:', { xState, tgState, refState, disabled });
+  console.log('📊 Current states:', { xState, tgState, refState, xVerified, disabled });
 
   // ===== CLEAN URL PARAMETERS =====
   const cleanUrlParams = useCallback(() => {
@@ -94,9 +95,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   // ===== HANDLE TWITTER CALLBACK RESULTS =====
   useEffect(() => {
     const handleTwitterCallback = async () => {
-      if (callbackProcessedRef.current) {
-        return;
-      }
+      if (callbackProcessedRef.current) return;
 
       const urlParams = new URLSearchParams(window.location.search);
       const twitterResult = urlParams.get('twitter_result');
@@ -111,75 +110,35 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       const profileUrl = urlParams.get('profile_url');
       const toastMessage = urlParams.get('toast_message');
       
-      // Clean URL params first, before any async operations
       cleanUrlParams();
       
       try {
-        // CASE 1: Self-account (target account owner) - Mark as complete and enable Telegram
-        if (twitterResult === 'self_account') {
-          console.log('🎯 Target account owner detected - marking as complete');
-          
-          await upsert.mutateAsync({ xState: 3, tgState: 1 });
+        if (twitterResult === 'success') {
           await refetch();
           
-          toast.success(
-            toastMessage || `You are the target account owner! Telegram unlocked.`,
-            { duration: 5000, icon: '🎯' }
-          );
-          return;
-        }
-        
-        // CASE 2: Successfully following (including already following before auth)
-        if (twitterResult === 'following') {
-          console.log('✅ Follow verified - enabling Telegram');
-          
-          await upsert.mutateAsync({ xState: 3, tgState: 1 });
-          await refetch();
-          
-          toast.success(
-            toastMessage || `✅ Following @${targetUsername} - Telegram unlocked!`,
-            { duration: 5000 }
-          );
-          return;
-        }
-        
-        // CASE 3: Not following - Open Twitter profile and mark for auto-recheck
-        if (twitterResult === 'not_following') {
-          console.log('❌ Not following - opening profile and marking for auto-recheck');
-          
-          await upsert.mutateAsync({ xState: 2 });
-          await refetch();
-          
-          // Open Twitter profile in new tab
-          if (profileUrl) {
+          // Open Twitter profile for user to follow
+          if (profileUrl && !profileOpenedRef.current) {
             window.open(profileUrl, '_blank', 'noopener,noreferrer');
-            twitterProfileOpenedRef.current = true;
+            profileOpenedRef.current = true;
           }
           
-          toast(
-            toastMessage || `Connected as @${username}. Follow @${targetUsername} in the opened tab. We'll auto-verify when you return.`,
-            { duration: 8000, icon: '👋' }
+          toast.success(
+            toastMessage || `Connected as @${username}! All tasks unlocked. Follow @${targetUsername} to stay verified.`,
+            { duration: 8000 }
           );
           return;
         }
         
-        // CASE 4: Error
         if (twitterResult === 'error') {
-          console.error('❌ Twitter OAuth error');
-          
           toast.error(
             toastMessage || 'Twitter authentication failed. Please try again.',
             { duration: 6000 }
           );
           return;
         }
-
-        // Unknown result
-        console.warn('⚠️ Unknown twitter_result:', twitterResult);
         
       } catch (error) {
         console.error('❌ Error processing Twitter callback:', error);
-        
         toast.error('Failed to process authentication. Please try again.', { duration: 5000 });
       }
     };
@@ -187,7 +146,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     handleTwitterCallback();
   }, [upsert, refetch, cleanUrlParams]);
 
-  // ===== INITIATE TWITTER OAUTH (Initial Authentication) =====
+  // ===== INITIATE TWITTER OAUTH =====
   const handleFollowX = useCallback(async () => {
     if (!address || pending) return;
     
@@ -227,86 +186,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   }, [address, pending]);
 
-  // ===== RECHECK TWITTER FOLLOW STATUS (Direct API Check) =====
-  const handleTwitterRecheckDirect = useCallback(async () => {
-    if (!address || pending) return;
-    
-    setPending("x");
-    
-    try {
-      toast.loading('Verifying follow status...', { id: 'recheck' });
-      
-      const res = await fetch(`/api/twitter/recheck`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address }),
-      });
-      
-      const data = await res.json();
-      
-      toast.dismiss('recheck');
-      
-      if (data.needsAuth) {
-        // Need to re-authenticate through OAuth
-        toast('Re-authentication required. Redirecting...', { duration: 3000 });
-        setTimeout(() => {
-          handleFollowX();
-        }, 1000);
-        return;
-      }
-      
-      if (data.success && data.isFollowing) {
-        // Successfully verified follow
-        await refetch();
-        toast.success(data.message || '✅ Follow verified! Telegram unlocked.', { duration: 5000 });
-      } else if (data.success && !data.isFollowing) {
-        // Still not following
-        await refetch();
-        toast.error(data.message || `Still not following @${data.targetUsername}. Please follow to continue.`, { duration: 6000 });
-      } else {
-        // Some error occurred
-        toast.error(data.error || 'Failed to verify follow status', { duration: 5000 });
-      }
-      
-    } catch (err) {
-      console.error("Twitter recheck error:", err);
-      toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
-    } finally {
-      setPending(null);
-    }
-  }, [address, pending, refetch, handleFollowX]);
-
-  // ===== AUTO-RECHECK WHEN USER RETURNS TO TAB =====
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // Only auto-recheck if:
-      // 1. User is in state 2 (authenticated but not following)
-      // 2. Twitter profile was opened
-      // 3. Tab becomes visible again
-      // 4. Not currently processing
-      if (
-        document.visibilityState === 'visible' &&
-        xState === 2 &&
-        twitterProfileOpenedRef.current &&
-        !pending
-      ) {
-        console.log('👀 Tab visible - auto-rechecking follow status...');
-        twitterProfileOpenedRef.current = false; // Reset flag
-        
-        // Wait a bit to ensure user had time to follow
-        setTimeout(() => {
-          handleTwitterRecheckDirect();
-        }, 1000);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [xState, pending, handleTwitterRecheckDirect]);
-
   // ===== HANDLE TELEGRAM VERIFICATION =====
   const handleJoinTG = async () => {
     if (!address || pending) return;
@@ -336,7 +215,6 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         });
         
         const data = await r.json();
-        console.log("Verification status:", data);
         
         if (data.verified && data.tgState === 3) {
           toast.success("Telegram verified ✅");
@@ -346,14 +224,13 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         }
       }, 2000);
 
-      // Clear interval after 10 minutes
       setTimeout(() => {
         clearInterval(interval);
         if (pending === "tg") {
           toast.error("Verification timeout. Please try again.");
           setPending(null);
         }
-      }, 600000); // 10 minutes
+      }, 600000);
     } catch (err) {
       console.error(err);
       toast.error("Failed to open Telegram bot.", { id: "telegram" });
@@ -393,26 +270,13 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   };
 
   // ===== CALCULATE DISPLAY STATES =====
-  // Fixed logic: Only disable if prop is true, otherwise use actual DB states
   const displayXState = disabled ? 0 : xState;
-  
-  // Telegram button: 
-  // - If disabled prop, show 0
-  // - If X is NOT complete (xState !== 3), show 0 (locked)
-  // - Otherwise show actual tgState, but minimum 1 (unlocked)
   const displayTgState = disabled ? 0 : (xState === 3 ? Math.max(tgState, 1) : 0);
-  
-  // Referral button:
-  // - If disabled prop, show 0
-  // - If Telegram is NOT complete (tgState !== 3), show 0 (locked)
-  // - Otherwise show actual refState, but minimum 1 (unlocked)
   const displayRefState = disabled ? 0 : (tgState === 3 ? Math.max(refState, 1) : 0);
-
-  console.log('🎨 Display states:', { displayXState, displayTgState, displayRefState });
 
   // ===== GET BUTTON TEXT =====
   const getXButtonText = () => {
-    if (pending === "x") return displayXState === 2 ? "Verifying..." : "Checking...";
+    if (pending === "x") return "Connecting...";
     
     switch (displayXState) {
       case 0:
@@ -420,9 +284,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       case 1:
         return "Follow Megalith on X";
       case 2:
-        return "Complete X Follow ↻";
+        return "Complete X Follow";
       case 3:
-        return "✓ Following Megalith on X";
+        return xVerified ? "✓ Following Megalith on X" : "✓ Following Megalith (Verifying...)";
       default:
         return "Follow Megalith on X";
     }
@@ -431,15 +295,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   // ===== GET BUTTON ACTION =====
   const getXButtonAction = () => {
     if (disabled) return undefined;
-    
-    switch (displayXState) {
-      case 1:
-        return handleFollowX;
-      case 2:
-        return handleTwitterRecheckDirect;
-      default:
-        return undefined;
-    }
+    return displayXState === 1 || displayXState === 2 ? handleFollowX : undefined;
   };
 
   return (

@@ -21,6 +21,7 @@ model UserProgress {
   userId              Int      @unique
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   xState              Int      @default(1)
+  xVerified           Boolean  @default(false)
   tgState             Int      @default(0)
   refState            Int      @default(0)
   referralCode        String?
@@ -31,4 +32,6 @@ model UserProgress {
   twitterRefreshToken String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  @@index([xState, xVerified])
 }
