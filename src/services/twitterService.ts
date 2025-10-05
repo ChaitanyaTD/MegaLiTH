@@ -112,7 +112,6 @@ export async function getTwitterUser(accessToken: string): Promise<TwitterUserRe
     console.warn("v2 fetch failed, trying v1.1", error);
   }
 
-  // fallback v1.1
   const resV1 = await fetch("https://api.twitter.com/1.1/account/verify_credentials.json", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -133,7 +132,7 @@ export async function getTwitterUser(accessToken: string): Promise<TwitterUserRe
 // === Utility: Delay function ===
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// === IMPROVED: Check following with pagination and retries ===
+// === Check following with pagination ===
 interface TwitterV2FollowingResponse {
   data?: Array<{ id: string; username: string }>;
   meta?: { 
@@ -151,133 +150,41 @@ async function checkFollowV2FollowingWithPagination(
   try {
     let nextToken: string | undefined;
     let checkedCount = 0;
-    const maxToCheck = 5000; // Don't check more than 5000 follows
-    
+    const maxToCheck = 5000;
+
     do {
       const url = new URL(`https://api.twitter.com/2/users/${twitterUserId}/following`);
       url.searchParams.set('user.fields', 'id,username');
       url.searchParams.set('max_results', maxResults.toString());
-      if (nextToken) {
-        url.searchParams.set('pagination_token', nextToken);
-      }
-      
+      if (nextToken) url.searchParams.set('pagination_token', nextToken);
+
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
 
       if (!res.ok) {
-        if (res.status === 429) {
-          console.warn("Rate limited on following check");
-          return null;
-        }
-        console.warn(`Following check failed: ${res.status}`);
+        if (res.status === 429) return null;
         return null;
       }
 
       const data = (await res.json()) as TwitterV2FollowingResponse;
-      
+
       if (data.data) {
-        // Check if target is in this batch
         const found = data.data.some((u) => u.id === targetId);
-        if (found) {
-          console.log(`✅ Found target in following list (checked ${checkedCount + data.data.length} accounts)`);
-          return true;
-        }
-        
+        if (found) return true;
         checkedCount += data.data.length;
       }
-      
+
       nextToken = data.meta?.next_token;
-      
-      // Stop if we've checked enough or no more pages
-      if (checkedCount >= maxToCheck || !nextToken) {
-        break;
-      }
-      
-      // Small delay between pagination requests
+      if (checkedCount >= maxToCheck || !nextToken) break;
+
       await delay(100);
-      
     } while (nextToken);
-    
-    console.log(`❌ Target not found in ${checkedCount} following accounts`);
+
     return false;
-    
-  } catch (error) {
-    console.error("Error checking following with pagination:", error);
+  } catch {
     return null;
   }
-}
-
-// === IMPROVED: Follow check with retries and delays ===
-export async function checkFollowEnhanced(
-  accessToken: string,
-  twitterUserId: string,
-  targetId: string,
-  targetUsername?: string
-): Promise<FollowCheckResult> {
-  // Self-follow check
-  if (twitterUserId === targetId) {
-    return { isFollowing: true, needsManualCheck: false };
-  }
-
-  console.log(`🔍 Checking if ${twitterUserId} follows ${targetId}...`);
-
-  // Try multiple times with delays to account for Twitter's eventual consistency
-  const maxAttempts = 3;
-  const delays = [0, 2000, 5000]; // 0ms, 2s, 5s delays
-  
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (delays[attempt] > 0) {
-      console.log(`⏳ Waiting ${delays[attempt]}ms before attempt ${attempt + 1}...`);
-      await delay(delays[attempt]);
-    }
-    
-    console.log(`🔄 Follow check attempt ${attempt + 1}/${maxAttempts}`);
-    
-    // Method 1: Check following list with pagination (most reliable)
-    try {
-      const followingResult = await checkFollowV2FollowingWithPagination(
-        accessToken, 
-        twitterUserId, 
-        targetId,
-        1000
-      );
-      
-      if (followingResult === true) {
-        return { isFollowing: true, needsManualCheck: false };
-      }
-      
-      // If we got a definitive false (not null), and it's not the first attempt, trust it
-      if (followingResult === false && attempt > 0) {
-        console.log(`📋 Following list check returned false on attempt ${attempt + 1}`);
-        // Continue to try other methods
-      }
-    } catch (error) {
-      console.warn(`Following list check failed on attempt ${attempt + 1}:`, error);
-    }
-    
-    // Method 2: v1.1 friendships/show (as backup)
-    if (attempt > 0) { // Only try after first attempt fails
-      try {
-        const v1Result = await checkFollowV1(accessToken, twitterUserId, targetId);
-        if (v1Result === true) {
-          return { isFollowing: true, needsManualCheck: false };
-        }
-      } catch (error) {
-        console.warn(`v1.1 friendship check failed on attempt ${attempt + 1}:`, error);
-      }
-    }
-  }
-
-  // All attempts failed - assume not following
-  console.log(`❌ All follow check attempts completed - assuming not following`);
-  
-  return {
-    isFollowing: false,
-    needsManualCheck: false,
-    redirectToProfile: true,
-    profileUrl: targetUsername ? `https://twitter.com/${targetUsername}` : undefined,
-  };
 }
 
 // --- Twitter v1 Friendships ---
@@ -287,7 +194,7 @@ interface TwitterFriendshipShowResponse {
 
 async function checkFollowV1(
   accessToken: string, 
-  twitterUserId: string, 
+  twitterUserId: string,
   targetId: string
 ): Promise<boolean | null> {
   try {
@@ -296,25 +203,56 @@ async function checkFollowV1(
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
-    if (!res.ok) {
-      console.warn(`v1.1 friendships/show failed: ${res.status}`);
-      return null;
-    }
+    if (!res.ok) return null;
 
     const data = (await res.json()) as TwitterFriendshipShowResponse;
-    const isFollowing = data.relationship?.source?.following || false;
-    
-    console.log(`v1.1 friendships/show result: ${isFollowing}`);
-    return isFollowing;
-  } catch (error) {
-    console.error("v1.1 friendship check error:", error);
+    return data.relationship?.source?.following || false;
+  } catch {
     return null;
   }
 }
 
+// === Dynamic polling follow check (replaces old enhanced check) ===
+export async function checkFollowEnhanced(
+  accessToken: string,
+  twitterUserId: string,
+  targetId: string,
+  targetUsername?: string,
+  maxWaitTime: number = 40000, // 40s max wait
+  interval: number = 5000 // poll every 5s
+): Promise<FollowCheckResult> {
+  if (twitterUserId === targetId) {
+    return { isFollowing: true, needsManualCheck: false };
+  }
+
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitTime) {
+    const v2Result = await checkFollowV2FollowingWithPagination(accessToken, twitterUserId, targetId);
+    if (v2Result === true) return { isFollowing: true, needsManualCheck: false };
+
+    const v1Result = await checkFollowV1(accessToken, twitterUserId, targetId);
+    if (v1Result === true) return { isFollowing: true, needsManualCheck: false };
+
+    await delay(interval);
+  }
+
+  return {
+    isFollowing: false,
+    needsManualCheck: true,
+    redirectToProfile: true,
+    profileUrl: targetUsername ? `https://twitter.com/${targetUsername}` : undefined,
+  };
+}
+
 // --- Backward compatible simple check ---
-export async function checkFollow(accessToken: string, twitterUserId: string, targetId: string): Promise<boolean> {
-  const result = await checkFollowEnhanced(accessToken, twitterUserId, targetId);
+export async function checkFollow(
+  accessToken: string,
+  twitterUserId: string,
+  targetId: string,
+  targetUsername?: string
+): Promise<boolean> {
+  const result = await checkFollowEnhanced(accessToken, twitterUserId, targetId, targetUsername);
   return result.isFollowing;
 }
 
@@ -339,47 +277,13 @@ export async function verifyFollowByTweet(accessToken: string, twitterUserId: st
     if (!res.ok) return false;
 
     const data = (await res.json()) as { data?: { text: string }[] };
-
     return (data.data || []).some((tweet) => tweet.text.includes(verificationCode));
   } catch {
     return false;
   }
 }
 
-// --- OLD: Update progress WITHOUT refresh token (keep for compatibility) ---
-export async function updateTwitterProgress(
-  address: string,
-  twitterUsername: string,
-  twitterUserId?: string,
-  isFollowing?: boolean
-) {
-  const user = await prisma.user.findUnique({ where: { address } });
-  if (!user) throw new Error("User not found");
-
-  const updateData: {
-    xState: number;
-    twitterId: string;
-    twitterUserId?: string;
-  } = {
-    xState: isFollowing ? 3 : 2,
-    twitterId: twitterUsername,
-  };
-
-  if (twitterUserId) {
-    updateData.twitterUserId = twitterUserId;
-  }
-
-  return prisma.userProgress.upsert({
-    where: { userId: user.id },
-    update: updateData,
-    create: {
-      userId: user.id,
-      ...updateData,
-    },
-  });
-}
-
-// --- NEW: Update progress WITH refresh token ---
+// --- Update Twitter progress ---
 export async function updateTwitterProgressWithToken(
   address: string,
   twitterUsername: string,
@@ -389,7 +293,7 @@ export async function updateTwitterProgressWithToken(
 ) {
   const user = await prisma.user.findUnique({ where: { address } });
   if (!user) throw new Error("User not found");
-  
+
   const updateData: {
     xState: number;
     tgState?: number;
@@ -399,19 +303,12 @@ export async function updateTwitterProgressWithToken(
   } = {
     xState: isFollowing ? 3 : 2,
     twitterId: twitterUsername,
-    twitterUserId: twitterUserId,
+    twitterUserId,
   };
-  
-  // If following, also enable Telegram (tgState = 1)
-  if (isFollowing) {
-    updateData.tgState = 1;
-  }
-  
-  // Store refresh token if provided
-  if (refreshToken) {
-    updateData.twitterRefreshToken = refreshToken;
-  }
-  
+
+  if (isFollowing) updateData.tgState = 1;
+  if (refreshToken) updateData.twitterRefreshToken = refreshToken;
+
   return prisma.userProgress.upsert({
     where: { userId: user.id },
     update: updateData,
@@ -436,7 +333,6 @@ export async function getTwitterUsernameById(accessToken: string, userId: string
     if (!res.ok) return null;
 
     const data = (await res.json()) as TwitterV2UserLookupResponse;
-
     return data.data?.[0]?.username || null;
   } catch {
     return null;
