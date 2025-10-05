@@ -3,7 +3,7 @@ import { createHmac } from "crypto";
 import {
   exchangeCodeForToken,
   getTwitterUser,
-  updateTwitterProgress,
+  updateTwitterProgressWithToken,
   checkFollowEnhanced,
   getTwitterUsernameById,
   TwitterTokenResponse,
@@ -109,6 +109,7 @@ export async function GET(req: NextRequest) {
       }
       
       console.log('✅ Token exchange successful');
+      console.log('🔑 Refresh token available:', !!tokenResp.refresh_token);
       
     } catch (tokenError) {
       console.error('❌ Token exchange failed:', tokenError);
@@ -167,7 +168,13 @@ export async function GET(req: NextRequest) {
       console.log(`⚠️ SELF-FOLLOW: User @${twitterUsername} is the target account`);
       
       // Target account owner - mark as completed (state 3) and enable Telegram
-      await updateTwitterProgress(address, twitterUsername, twitterUserId, true);
+      await updateTwitterProgressWithToken(
+        address, 
+        twitterUsername, 
+        twitterUserId, 
+        true,
+        tokenResp.refresh_token
+      );
       
       const redirectUrl = buildRedirectUrl(returnUrl, {
         twitter_result: "self_account",
@@ -200,10 +207,16 @@ export async function GET(req: NextRequest) {
       isFollowing = false;
     }
 
-    // STEP 6: Update database based on follow status
-    await updateTwitterProgress(address, twitterUsername, twitterUserId, isFollowing);
+    // STEP 6: Update database based on follow status and STORE REFRESH TOKEN
+    await updateTwitterProgressWithToken(
+      address, 
+      twitterUsername, 
+      twitterUserId, 
+      isFollowing,
+      tokenResp.refresh_token  // THIS IS THE KEY FIX - Store refresh token!
+    );
     
-    console.log(`💾 Database updated: following=${isFollowing}`);
+    console.log(`💾 Database updated: following=${isFollowing}, refresh_token=${tokenResp.refresh_token ? 'stored' : 'not available'}`);
 
     // STEP 7: Redirect based on follow status
     

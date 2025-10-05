@@ -67,6 +67,37 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
   return res.json() as Promise<TwitterTokenResponse>;
 }
 
+// === Refresh Access Token ===
+export async function refreshAccessToken(refreshToken: string): Promise<TwitterTokenResponse> {
+  const X_CLIENT_ID = requireEnvVar("X_CLIENT_ID");
+  const X_CLIENT_SECRET = requireEnvVar("X_CLIENT_SECRET");
+  
+  const params = new URLSearchParams({
+    client_id: X_CLIENT_ID,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+  
+  const credentials = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString("base64");
+  
+  const res = await fetch("https://api.twitter.com/2/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      Authorization: `Basic ${credentials}`,
+    },
+    body: params.toString(),
+  });
+  
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Twitter token refresh failed: ${res.status} ${res.statusText} — ${body}`);
+  }
+  
+  return res.json() as Promise<TwitterTokenResponse>;
+}
+
 // === Fetch Twitter user ===
 export async function getTwitterUser(accessToken: string): Promise<TwitterUserResponse> {
   try {
@@ -234,7 +265,7 @@ export async function verifyFollowByTweet(accessToken: string, twitterUserId: st
   }
 }
 
-// --- Update progress in DB (with twitterUserId) ---
+// --- OLD: Update progress WITHOUT refresh token (keep for compatibility) ---
 export async function updateTwitterProgress(
   address: string,
   twitterUsername: string,
@@ -253,11 +284,53 @@ export async function updateTwitterProgress(
     twitterId: twitterUsername,
   };
 
-  // Only include twitterUserId if it's provided
   if (twitterUserId) {
     updateData.twitterUserId = twitterUserId;
   }
 
+  return prisma.userProgress.upsert({
+    where: { userId: user.id },
+    update: updateData,
+    create: {
+      userId: user.id,
+      ...updateData,
+    },
+  });
+}
+
+// --- NEW: Update progress WITH refresh token ---
+export async function updateTwitterProgressWithToken(
+  address: string,
+  twitterUsername: string,
+  twitterUserId: string,
+  isFollowing: boolean,
+  refreshToken?: string
+) {
+  const user = await prisma.user.findUnique({ where: { address } });
+  if (!user) throw new Error("User not found");
+  
+  const updateData: {
+    xState: number;
+    tgState?: number;
+    twitterId: string;
+    twitterUserId: string;
+    twitterRefreshToken?: string;
+  } = {
+    xState: isFollowing ? 3 : 2,
+    twitterId: twitterUsername,
+    twitterUserId: twitterUserId,
+  };
+  
+  // If following, also enable Telegram (tgState = 1)
+  if (isFollowing) {
+    updateData.tgState = 1;
+  }
+  
+  // Store refresh token if provided
+  if (refreshToken) {
+    updateData.twitterRefreshToken = refreshToken;
+  }
+  
   return prisma.userProgress.upsert({
     where: { userId: user.id },
     update: updateData,

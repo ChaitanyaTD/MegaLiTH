@@ -224,51 +224,63 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     }
   }, [address, pending]);
 
-  // ===== RECHECK TWITTER FOLLOW STATUS =====
-  const handleTwitterRecheck = useCallback(async () => {
+  // ===== RECHECK TWITTER FOLLOW STATUS (Direct API Check) =====
+  const handleTwitterRecheckDirect = useCallback(async () => {
     if (!address || pending) return;
     
-    callbackProcessedRef.current = false;
     setPending("x");
     
     try {
       toast.loading('Verifying follow status...', { id: 'recheck' });
       
-      const res = await fetch(`/api/twitter/auth?address=${address}&recheck=true`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
+      const res = await fetch(`/api/twitter/recheck`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
       });
       
-      if (!res.ok) {
-        toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
-        setPending(null);
-        return;
-      }
-      
-      const payload = await res.json();
-      
-      if (!payload?.ok || !payload?.url) {
-        toast.error("Invalid OAuth response", { duration: 5000, id: 'recheck' });
-        setPending(null);
-        return;
-      }
+      const data = await res.json();
       
       toast.dismiss('recheck');
       
-      setTimeout(() => {
-        window.location.assign(payload.url);
-      }, 500);
+      if (data.needsAuth) {
+        // Need to re-authenticate through OAuth
+        toast('Re-authentication required. Redirecting...', { duration: 3000 });
+        setTimeout(() => {
+          handleFollowX();
+        }, 1000);
+        return;
+      }
+      
+      if (data.success && data.isFollowing) {
+        // Successfully verified follow
+        await refetch();
+        toast.success(data.message || '✅ Follow verified! Telegram unlocked.', { duration: 5000 });
+      } else if (data.success && !data.isFollowing) {
+        // Still not following
+        await refetch();
+        toast.error(data.message || `Still not following @${data.targetUsername}. Please follow to continue.`, { duration: 6000 });
+      } else {
+        // Some error occurred
+        toast.error(data.error || 'Failed to verify follow status', { duration: 5000 });
+      }
       
     } catch (err) {
       console.error("Twitter recheck error:", err);
       toast.error("Failed to verify follow status", { duration: 5000, id: 'recheck' });
+    } finally {
       setPending(null);
     }
-  }, [address, pending]);
+  }, [address, pending, refetch, handleFollowX]);
 
   // ===== AUTO-RECHECK WHEN USER RETURNS TO TAB =====
   useEffect(() => {
     const handleVisibilityChange = () => {
+      // Only auto-recheck if:
+      // 1. User is in state 2 (authenticated but not following)
+      // 2. Twitter profile was opened
+      // 3. Tab becomes visible again
+      // 4. Not currently processing
       if (
         document.visibilityState === 'visible' &&
         xState === 2 &&
@@ -278,8 +290,9 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
         console.log('👀 Tab visible - auto-rechecking follow status...');
         twitterProfileOpenedRef.current = false; // Reset flag
         
+        // Wait a bit to ensure user had time to follow
         setTimeout(() => {
-          handleTwitterRecheck();
+          handleTwitterRecheckDirect();
         }, 1000);
       }
     };
@@ -289,7 +302,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [xState, pending, handleTwitterRecheck]);
+  }, [xState, pending, handleTwitterRecheckDirect]);
 
   // ===== HANDLE TELEGRAM VERIFICATION =====
   const handleJoinTG = async () => {
@@ -402,7 +415,7 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       case 1:
         return handleFollowX;
       case 2:
-        return handleTwitterRecheck;
+        return handleTwitterRecheckDirect; // Changed to direct API check
       default:
         return undefined;
     }

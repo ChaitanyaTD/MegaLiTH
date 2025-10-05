@@ -22,10 +22,10 @@ export async function GET(req: NextRequest) {
   try {
     // Dynamically pick redirect URI: Vercel URL in production, ngrok/local in dev
     const X_CLIENT_ID = process.env.X_CLIENT_ID;
-   const X_REDIRECT_URI =
-  process.env.NODE_ENV === "development"
-    ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
-    : process.env.X_REDIRECT_URI;
+    const X_REDIRECT_URI =
+      process.env.NODE_ENV === "development"
+        ? `https://${process.env.VERCEL_URL}/api/twitter/callback`
+        : process.env.X_REDIRECT_URI;
     const TARGET_TWITTER_ID = process.env.TARGET_TWITTER_ID;
     const TARGET_TWITTER_USERNAME = process.env.TARGET_TWITTER_USERNAME;
 
