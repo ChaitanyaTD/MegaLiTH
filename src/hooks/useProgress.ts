@@ -13,6 +13,8 @@ export type ProgressRecord = {
   createdAt: string;
   updatedAt: string;
   xVerified: boolean;
+  twitterId?: string | null;
+  telegramUsername?: string | null;
 } | null;
 
 export type TaskState = 0 | 1 | 2;
