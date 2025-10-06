@@ -59,6 +59,7 @@ async function createInviteLink(): Promise<string | null> {
 bot.start(async (ctx) => {
   const payload = ctx.startPayload;
   const telegramId = ctx.from?.id;
+  const username = ctx.from?.username;
 
   if (!telegramId) {
     await ctx.reply("❌ Unable to identify user. Please try again.");
@@ -66,9 +67,11 @@ bot.start(async (ctx) => {
   }
 
   if (payload) {
+    // FIXED: Now sending username
     const success = await notifyBackend("/api/telegram/start-callback", {
       payload,
       telegramId,
+      username: username ?? null,
     });
 
     if (!success) {

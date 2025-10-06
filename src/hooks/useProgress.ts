@@ -14,6 +14,7 @@ export type ProgressRecord = {
   updatedAt: string;
   xVerified: boolean;
   twitterId?: string | null;
+  telegramId?: string | null; // Added this
   telegramUsername?: string | null;
 } | null;
 
@@ -31,13 +32,13 @@ export function useProgress() {
       return (await res.json()) as ProgressRecord;
     },
     enabled: !!address,
-    staleTime: 0, // Changed from 60_000 to 0 - always consider data stale
+    staleTime: 0,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: 0,
-    refetchInterval: false, // Disabled auto refetch
-    refetchIntervalInBackground: false, // Disabled background refetch
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
   });
 
   const upsert = useMutation({
@@ -58,5 +59,3 @@ export function useProgress() {
 
   return { ...q, upsert };
 }
-
-
