@@ -50,7 +50,7 @@ function Btn({
 }
 
 // ===== MAIN TASK BUTTONS COMPONENT =====
-export default function TaskButtons({ disabled }: { disabled?: boolean }) {
+export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: boolean ,setReferralLink: (link: string | null) => void }) {
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { data, upsert, refetch } = useProgress();
@@ -301,6 +301,11 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
       await refetch();
       
       toast.success(`✅ Referral link generated using ${type === 'twitter' ? 'Twitter' : 'Telegram'} username!`, { duration: 5000, id: 'referral' });
+      if (data.referralLink){
+      setReferralLink(data.referralLink);
+      } else {
+        setReferralLink(null);
+      }
       setReferralType(null);
       setPending(null);
     } catch (err) {

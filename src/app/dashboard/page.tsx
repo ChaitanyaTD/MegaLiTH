@@ -14,6 +14,7 @@ export default function Dashboard() {
   const { data, isFetched } = useProgress();
   const didInitRef = useRef(false);
   const [userReady, setUserReady] = useState(false);
+  const [referralLink, setReferralLink] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConnected) {
@@ -68,9 +69,9 @@ export default function Dashboard() {
 
         <section className="mt-10">
           <h2 className="heading text-2xl font-semibold">Alliance Drop</h2>
-          <TaskButtons disabled={!userReady} />
+          <TaskButtons disabled={!userReady}  setReferralLink={setReferralLink}/>
           <div className="mt-10">
-            <p className="text-xl font-semibold">Your unique referral link:</p>
+            <p className="text-xl font-semibold">Your unique referral link: <span className="font-normal text-white">{referralLink}</span></p>
             <div className="mt-4">
               <button className="btn btn-primary text-black font-bold rounded-xl px-6 py-3">Register</button>
             </div>
