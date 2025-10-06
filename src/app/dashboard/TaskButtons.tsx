@@ -4,6 +4,7 @@ import { useProgress } from "@/hooks/useProgress";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 // ===== BUTTON COMPONENT =====
 function Btn({ 
@@ -51,6 +52,7 @@ function Btn({
 // ===== MAIN TASK BUTTONS COMPONENT =====
 export default function TaskButtons({ disabled }: { disabled?: boolean }) {
   const { address } = useAccount();
+  const queryClient = useQueryClient();
   const { data, upsert, refetch } = useProgress();
   const [pending, setPending] = useState<null | "x" | "tg" | "ref">(null);
 
@@ -220,16 +222,19 @@ export default function TaskButtons({ disabled }: { disabled?: boolean }) {
             body: JSON.stringify({ address }),
           });
           
-          const data = await r.json();
+          const pollData = await r.json();
           
-          console.log('Telegram poll result:', data);
+          console.log('Telegram poll result:', pollData);
           
-          if (data.verified && data.tgState === 3) {
-            toast.success("Telegram verified ✅");
+          if (pollData.verified && pollData.tgState === 3) {
             clearInterval(interval);
+            toast.success("Telegram verified ✅");
             
-            // Force refetch and update UI
-            await refetch();
+            // Invalidate and refetch to get fresh data from server
+            queryClient.invalidateQueries({ queryKey: ["progress", address] });
+            const refetchResult = await refetch();
+            console.log('Refetch completed:', refetchResult.data);
+
             setPending(null);
             
             console.log('Telegram verified, UI should update now');
