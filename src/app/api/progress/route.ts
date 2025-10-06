@@ -3,13 +3,14 @@ import { getUserByAddress } from "@/services/userService";
 import { getProgress, upsertProgress } from "@/services/progressService";
 
 // Helper to safely stringify BigInts
-function toSafeJSON(obj: any) {
+function toSafeJSON<T>(obj: T): T {
   return JSON.parse(
     JSON.stringify(obj, (_, value) =>
       typeof value === "bigint" ? value.toString() : value
     )
   );
 }
+
 
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get("address");

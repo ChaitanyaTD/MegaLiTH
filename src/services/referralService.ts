@@ -38,7 +38,7 @@ export async function generateReferral(address: string, type: 'twitter' | 'teleg
   const username = type === 'twitter' ? twitterId : telegramUsername;
   
   // Build referral link
-  const referralLink = `${process.env.NEXT_PUBLIC_SITE_URL}/${username}/${referralCode}`;
+  const referralLink = `${process.env.NEXTAUTH_URL}/${username}/${referralCode}`;
 
   return {
     referralCode,
