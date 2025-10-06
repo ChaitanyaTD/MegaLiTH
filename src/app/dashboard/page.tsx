@@ -71,7 +71,7 @@ export default function Dashboard() {
           <h2 className="heading text-2xl font-semibold">Alliance Drop</h2>
           <TaskButtons disabled={!userReady}  setReferralLink={setReferralLink}/>
           <div className="mt-10">
-            <p className="text-xl font-semibold">Your unique referral link: <span className="font-normal text-white">{referralLink}</span></p>
+            <p className="text-xl font-semibold">Your unique referral link: <span className="font-normal">{referralLink}</span></p>
             <div className="mt-4">
               <button className="btn btn-primary text-black font-bold rounded-xl px-6 py-3">Register</button>
             </div>
