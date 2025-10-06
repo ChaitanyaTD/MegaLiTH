@@ -4,7 +4,7 @@ import { useProgress } from "@/hooks/useProgress";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 // ===== BUTTON COMPONENT =====
 function Btn({ 
