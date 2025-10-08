@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Users, Twitter, MessageCircle, Download, ArrowRight, TrendingUp } from 'lucide-react';
+import { Search, Users, Download, TrendingUp } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import * as XLSX from 'xlsx';
 
 interface ReferredUser {
   address: string;
-  sourceType: string;
   joinedAt: string;
   referralId: string;
 }
@@ -15,13 +14,7 @@ interface ReferredUser {
 interface Referral {
   address: string;
   referralCode: string | null;
-  twitterId: string | null;
-  twitterUserId: string | null;
-  telegramUsername: string | null;
-  telegramId: string | null;
   totalReferrals: number;
-  twitterReferrals: number;
-  telegramReferrals: number;
   createdAt: string;
   updatedAt: string;
   referredUsers: ReferredUser[];
@@ -31,8 +24,6 @@ interface Stats {
   totalUsers: number;
   totalReferrers: number;
   totalReferrals: number;
-  twitterReferrals: number;
-  telegramReferrals: number;
   averageReferralsPerUser: string;
 }
 
@@ -42,7 +33,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'twitter' | 'telegram'>('all');
   const [selectedReferral, setSelectedReferral] = useState<Referral | null>(null);
   const [viewMode, setViewMode] = useState<'overview' | 'detailed'>('overview');
 
@@ -84,12 +74,7 @@ export default function AdminDashboard() {
     ref.referredUsers.map((user) => ({
       referrerAddress: ref.address,
       referrerCode: ref.referralCode,
-      referrerTwitter: ref.twitterId,
-      referrerTwitterUserId: ref.twitterUserId,
-      referrerTelegram: ref.telegramUsername,
-      referrerTelegramId: ref.telegramId,
       referredAddress: user.address,
-      sourceType: user.sourceType,
       joinedAt: user.joinedAt,
       referralId: user.referralId,
     }))
@@ -97,34 +82,24 @@ export default function AdminDashboard() {
 
   const filteredDetailedList = detailedReferralList.filter((item) => {
     const term = searchTerm.toLowerCase();
-    const matchesSearch =
+    return (
       item.referrerAddress.toLowerCase().includes(term) ||
       item.referredAddress.toLowerCase().includes(term) ||
-      item.referrerCode?.toLowerCase().includes(term);
-
-    if (filterType === 'twitter') return matchesSearch && item.sourceType === 'twitter';
-    if (filterType === 'telegram') return matchesSearch && item.sourceType === 'telegram';
-    return matchesSearch;
+      item.referrerCode?.toLowerCase().includes(term)
+    );
   });
 
   const filteredReferrals = referrals.filter((ref) => {
     const term = searchTerm.toLowerCase();
-    const matchesSearch =
+    return (
       ref.address.toLowerCase().includes(term) ||
-      ref.referralCode?.toLowerCase().includes(term) ||
-      ref.twitterId?.toLowerCase().includes(term) ||
-      ref.telegramUsername?.toLowerCase().includes(term);
-
-    if (filterType === 'twitter') return matchesSearch && ref.twitterReferrals > 0;
-    if (filterType === 'telegram') return matchesSearch && ref.telegramReferrals > 0;
-    return matchesSearch;
+      ref.referralCode?.toLowerCase().includes(term)
+    );
   });
 
   const displayStats = {
     totalUsers: stats?.totalUsers || 0,
     totalReferrals: stats?.totalReferrals || 0,
-    twitterReferrals: stats?.twitterReferrals || 0,
-    telegramReferrals: stats?.telegramReferrals || 0,
   };
 
   // XLSX Download Functions
@@ -132,13 +107,7 @@ export default function AdminDashboard() {
     const worksheetData = filteredReferrals.map(ref => ({
       'Address': ref.address,
       'Referral Code': ref.referralCode || '',
-      'Twitter ID': ref.twitterId || '',
-      'Twitter User ID': ref.twitterUserId || '',
-      'Telegram Username': ref.telegramUsername || '',
-      'Telegram ID': ref.telegramId || '',
       'Total Referrals': ref.totalReferrals,
-      'Twitter Referrals': ref.twitterReferrals,
-      'Telegram Referrals': ref.telegramReferrals,
       'Created At': new Date(ref.createdAt).toLocaleString(),
       'Last Updated': new Date(ref.updatedAt).toLocaleString()
     }));
@@ -147,13 +116,10 @@ export default function AdminDashboard() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Referrals Overview');
 
-    // Add summary statistics sheet
     const statsData = [
       { Metric: 'Total Users', Value: stats?.totalUsers || 0 },
       { Metric: 'Total Referrers', Value: stats?.totalReferrers || 0 },
       { Metric: 'Total Referrals', Value: stats?.totalReferrals || 0 },
-      { Metric: 'Twitter Referrals', Value: stats?.twitterReferrals || 0 },
-      { Metric: 'Telegram Referrals', Value: stats?.telegramReferrals || 0 },
       { Metric: 'Average Referrals Per User', Value: stats?.averageReferralsPerUser || 0 }
     ];
     const statsSheet = XLSX.utils.json_to_sheet(statsData);
@@ -166,12 +132,7 @@ export default function AdminDashboard() {
     const worksheetData = filteredDetailedList.map(item => ({
       'Referrer Address': item.referrerAddress,
       'Referral Code': item.referrerCode || '',
-      'Referrer Twitter': item.referrerTwitter || '',
-      'Referrer Twitter User ID': item.referrerTwitterUserId || '',
-      'Referrer Telegram': item.referrerTelegram || '',
-      'Referrer Telegram ID': item.referrerTelegramId || '',
       'Referred Address': item.referredAddress,
-      'Source Type': item.sourceType,
       'Joined At': new Date(item.joinedAt).toLocaleString(),
       'Referral ID': item.referralId
     }));
@@ -180,42 +141,8 @@ export default function AdminDashboard() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Detailed Referrals');
 
-    // Add summary by source type
-    const twitterCount = filteredDetailedList.filter(r => r.sourceType === 'twitter').length;
-    const telegramCount = filteredDetailedList.filter(r => r.sourceType === 'telegram').length;
-    
-    const summaryData = [
-      { 'Source Type': 'Twitter', 'Count': twitterCount },
-      { 'Source Type': 'Telegram', 'Count': telegramCount },
-      { 'Source Type': 'Total', 'Count': filteredDetailedList.length }
-    ];
-    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-
     XLSX.writeFile(workbook, `referrals-detailed-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
-
-  // if (loading) {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-  //       <div className="text-center">
-  //         <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent mb-4"></div>
-  //         <p className="text-white text-xl">Loading dashboard...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
-  // if (error) {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-  //       <div className="bg-red-500/10 border border-red-500 rounded-lg p-6 text-red-200 max-w-md text-center">
-  //         <h2 className="text-xl font-bold mb-2">Error</h2>
-  //         <p>{error}</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
 
   return (
     <div className="min-h-screen p-6">
@@ -233,12 +160,10 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           {[
             { label: 'Total Users', value: displayStats.totalUsers, icon: Users, color: 'text-blue-400' },
             { label: 'Total Referrals', value: displayStats.totalReferrals, icon: Users, color: 'text-green-400' },
-            { label: 'Twitter Referrals', value: displayStats.twitterReferrals, icon: Twitter, color: 'text-sky-400' },
-            { label: 'Telegram Referrals', value: displayStats.telegramReferrals, icon: MessageCircle, color: 'text-blue-400' },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <div className="flex items-center justify-between">
@@ -276,45 +201,26 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Search & Filter */}
+        {/* Search & Download */}
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
                 type="text"
-                placeholder="Search by address, code, or username..."
+                placeholder="Search by address or code..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {['all', 'twitter', 'telegram'].map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setFilterType(type as 'all' | 'twitter' | 'telegram')}
-                  className={`px-4 py-2 rounded-lg font-medium transition ${
-                    filterType === type
-                      ? type === 'twitter'
-                        ? 'bg-sky-600 text-white'
-                        : type === 'telegram'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-purple-600 text-white'
-                      : 'bg-white/5 text-gray-300 hover:bg-white/10'
-                  }`}
-                >
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </button>
-              ))}
-              <button
-                onClick={viewMode === 'overview' ? downloadOverviewXLSX : downloadDetailedXLSX}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
-              >
-                <Download size={18} />
-                Download Excel
-              </button>
-            </div>
+            <button
+              onClick={viewMode === 'overview' ? downloadOverviewXLSX : downloadDetailedXLSX}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
+            >
+              <Download size={18} />
+              Download Excel
+            </button>
           </div>
         </div>
 
@@ -325,16 +231,7 @@ export default function AdminDashboard() {
               <table className="w-full">
                 <thead className="bg-white/5">
                   <tr>
-                    {[
-                      'Address',
-                      'Referral Code',
-                      'Twitter',
-                      'Telegram',
-                      'Total',
-                      <Twitter key="t" size={16} className="inline" />,
-                      <MessageCircle key="m" size={16} className="inline" />,
-                      'Actions',
-                    ].map((header, i) => (
+                    {['Address', 'Referral Code', 'Total', 'Actions'].map((header, i) => (
                       <th key={i} className="px-6 py-4 text-left text-sm font-semibold text-gray-300">
                         {header}
                       </th>
@@ -348,21 +245,9 @@ export default function AdminDashboard() {
                         {ref.address.slice(0, 6)}...{ref.address.slice(-4)}
                       </td>
                       <td className="px-6 py-4 text-sm text-purple-300 font-mono">{ref.referralCode || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-300">{ref.twitterId || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-300">{ref.telegramUsername || '-'}</td>
                       <td className="px-6 py-4 text-sm text-center">
                         <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-500/20 text-green-300 font-semibold">
                           {ref.totalReferrals}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 font-semibold">
-                          {ref.twitterReferrals}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-center">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 font-semibold">
-                          {ref.telegramReferrals}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm">
@@ -392,15 +277,7 @@ export default function AdminDashboard() {
               <table className="w-full">
                 <thead className="bg-white/5">
                   <tr>
-                    {[
-                      'Referrer',
-                      'Code',
-                      'Referrer Social',
-                      '',
-                      'Referred User',
-                      'Source',
-                      'Joined Date',
-                    ].map((header, i) => (
+                    {['Referrer', 'Code', 'Referred User', 'Joined Date'].map((header, i) => (
                       <th key={i} className="px-6 py-4 text-left text-sm font-semibold text-gray-300">
                         {header}
                       </th>
@@ -416,42 +293,8 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 text-sm text-purple-300 font-mono">
                         {item.referrerCode || '-'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-300">
-                        <div className="flex flex-col gap-1">
-                          {item.referrerTwitter && (
-                            <span className="flex items-center gap-1 text-sky-400">
-                              <Twitter size={12} />
-                              {item.referrerTwitter}
-                            </span>
-                          )}
-                          {item.referrerTelegram && (
-                            <span className="flex items-center gap-1 text-blue-400">
-                              <MessageCircle size={12} />
-                              {item.referrerTelegram}
-                            </span>
-                          )}
-                          {!item.referrerTwitter && !item.referrerTelegram && '-'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <ArrowRight className="text-purple-400" size={20} />
-                      </td>
                       <td className="px-6 py-4 text-sm text-white font-mono">
                         {item.referredAddress.slice(0, 6)}...{item.referredAddress.slice(-4)}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        {item.sourceType === 'twitter' && (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-sky-500/20 text-sky-300 rounded-full text-xs font-semibold">
-                            <Twitter size={12} />
-                            Twitter
-                          </span>
-                        )}
-                        {item.sourceType === 'telegram' && (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs font-semibold">
-                            <MessageCircle size={12} />
-                            Telegram
-                          </span>
-                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-300">
                         {new Date(item.joinedAt).toLocaleDateString()}
@@ -489,20 +332,6 @@ export default function AdminDashboard() {
                     <p className="text-gray-400 text-sm">Referral Code</p>
                     <p className="text-white font-mono">{selectedReferral.referralCode}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {selectedReferral.twitterId && (
-                      <div>
-                        <p className="text-gray-400 text-sm">Twitter</p>
-                        <p className="text-white">{selectedReferral.twitterId}</p>
-                      </div>
-                    )}
-                    {selectedReferral.telegramUsername && (
-                      <div>
-                        <p className="text-gray-400 text-sm">Telegram</p>
-                        <p className="text-white">{selectedReferral.telegramUsername}</p>
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 <h3 className="text-xl font-bold text-white mb-4">
@@ -516,20 +345,6 @@ export default function AdminDashboard() {
                         <span className="text-white font-mono text-sm">
                           {user.address.slice(0, 6)}...{user.address.slice(-4)}
                         </span>
-                        <div className="flex items-center gap-2">
-                          {user.sourceType === 'twitter' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/20 text-sky-300 rounded text-xs">
-                              <Twitter size={12} />
-                              Twitter
-                            </span>
-                          )}
-                          {user.sourceType === 'telegram' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
-                              <MessageCircle size={12} />
-                              Telegram
-                            </span>
-                          )}
-                        </div>
                       </div>
                       <p className="text-gray-400 text-xs mt-2">
                         Joined: {new Date(user.joinedAt).toLocaleDateString()}

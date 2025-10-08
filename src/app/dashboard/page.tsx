@@ -12,7 +12,7 @@ import ReferralInviteModal from "@/components/InviteRefferalModal";
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
   const router = useRouter();
-  const searchParams = useSearchParams();
+ const searchParams = typeof window !== 'undefined' ? useSearchParams() : null;
   const { data, isFetched } = useProgress();
   const didInitRef = useRef(false);
   const [userReady, setUserReady] = useState(false);
@@ -22,6 +22,7 @@ export default function Dashboard() {
 
   // Check for referral code in URL
   useEffect(() => {
+    if (!searchParams) return; 
     const refCode = searchParams.get('ref');
     if (refCode && isConnected && !hasProcessedReferral) {
       setShowReferralModal(true);
