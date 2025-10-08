@@ -50,7 +50,7 @@ function Btn({
 }
 
 // ===== MAIN TASK BUTTONS COMPONENT =====
-export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: boolean ,setReferralLink: (link: string | null) => void }) {
+export default function TaskButtons({ disabled, setReferralLink }: { disabled?: boolean; setReferralLink: (link: string | null) => void }) {
   const { address } = useAccount();
   const queryClient = useQueryClient();
   const { data, upsert, refetch } = useProgress();
@@ -259,18 +259,10 @@ export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: b
   };
 
   // ===== HANDLE REFERRAL GENERATION =====
-  const [referralType, setReferralType] = useState<'twitter' | 'telegram' | null>(null);
-  
   const handleGetReferral = async () => {
     if (!address || pending) return;
     
-    // Show selection dialog
-    setReferralType(null); // Reset selection
     setPending("ref");
-  };
-
-  const generateReferralWithType = async (type: 'twitter' | 'telegram') => {
-    if (!address) return;
     
     try {
       toast.loading('Generating referral link...', { id: 'referral' });
@@ -278,11 +270,12 @@ export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: b
       const res = await fetch("/api/referral", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ address, type }),
+        body: JSON.stringify({ address }),
       });
       
       if (!res.ok) {
-        toast.error("Failed to generate referral", { duration: 5000, id: 'referral' });
+        const errorData = await res.json();
+        toast.error(errorData.error || "Failed to generate referral", { duration: 5000, id: 'referral' });
         setPending(null);
         return;
       }
@@ -294,19 +287,19 @@ export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: b
       console.log('REFERRAL LINK GENERATED:');
       console.log(data.referralLink);
       console.log('Referral Code:', data.referralCode);
-      console.log('Type:', type);
       console.log('===========================================');
       
       await upsert.mutateAsync({ refState: 3 });
       await refetch();
       
-      toast.success(`✅ Referral link generated using ${type === 'twitter' ? 'Twitter' : 'Telegram'} username!`, { duration: 5000, id: 'referral' });
-      if (data.referralLink){
-      setReferralLink(data.referralLink);
+      toast.success('✅ Referral link generated successfully!', { duration: 5000, id: 'referral' });
+      
+      if (data.referralLink) {
+        setReferralLink(data.referralLink);
       } else {
         setReferralLink(null);
       }
-      setReferralType(null);
+      
       setPending(null);
     } catch (err) {
       console.error(err);
@@ -345,70 +338,30 @@ export default function TaskButtons({ disabled ,setReferralLink}: { disabled?: b
   };
 
   return (
-    <>
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
-        <Btn 
-          state={displayXState} 
-          onClick={getXButtonAction()}
-          loading={pending === "x"}
-        >
-          {getXButtonText()}
-        </Btn>
-        
-        <Btn 
-          state={pending === "tg" ? 2 : displayTgState} 
-          onClick={displayTgState === 1 ? handleJoinTG : undefined} 
-          loading={pending === "tg"}
-        >
-          {displayTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
-        </Btn>
-        
-        <Btn 
-          state={pending === "ref" ? 0 : displayRefState} 
-          onClick={displayRefState === 1 ? handleGetReferral : undefined}
-          loading={pending === "ref"}
-        >
-          {displayRefState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
-        </Btn>
-      </div>
-
-      {/* Referral Type Selection Modal */}
-      {pending === "ref" && referralType === null && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#1a1d21] rounded-2xl p-8 max-w-md w-full mx-4 border border-gray-800">
-            <h3 className="text-2xl font-bold text-white mb-4">Choose Referral Type</h3>
-            <p className="text-gray-400 mb-6">Select which username to use for your referral link:</p>
-            
-            <div className="space-y-4">
-              <button
-                onClick={() => generateReferralWithType('twitter')}
-                className="w-full bg-[#1DA1F2] hover:bg-[#1a8cd8] text-white font-semibold py-4 px-6 rounded-xl transition-colors flex items-center justify-between"
-              >
-                <span>Use Twitter Username</span>
-                <span className="text-sm opacity-80">@{data?.twitterId || 'username'}</span>
-              </button>
-              
-              <button
-                onClick={() => generateReferralWithType('telegram')}
-                className="w-full bg-[#0088cc] hover:bg-[#006699] text-white font-semibold py-4 px-6 rounded-xl transition-colors flex items-center justify-between"
-              >
-                <span>Use Telegram Username</span>
-                <span className="text-sm opacity-80">@{data?.telegramUsername || 'username'}</span>
-              </button>
-            </div>
-            
-            <button
-              onClick={() => {
-                setPending(null);
-                setReferralType(null);
-              }}
-              className="w-full mt-4 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold py-3 px-6 rounded-xl transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </>
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 opacity-100">
+      <Btn 
+        state={displayXState} 
+        onClick={getXButtonAction()}
+        loading={pending === "x"}
+      >
+        {getXButtonText()}
+      </Btn>
+      
+      <Btn 
+        state={pending === "tg" ? 2 : displayTgState} 
+        onClick={displayTgState === 1 ? handleJoinTG : undefined} 
+        loading={pending === "tg"}
+      >
+        {displayTgState === 3 ? "✓ Joined Telegram" : "Join Telegram"}
+      </Btn>
+      
+      <Btn 
+        state={pending === "ref" ? 2 : displayRefState} 
+        onClick={displayRefState === 1 ? handleGetReferral : undefined}
+        loading={pending === "ref"}
+      >
+        {displayRefState === 3 ? "✓ Referral Generated" : "Reveal Referral Link"}
+      </Btn>
+    </div>
   );
 }

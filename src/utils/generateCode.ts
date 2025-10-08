@@ -1,3 +1,4 @@
 export function generateCode(): string {
-  return Math.random().toString(36).slice(2, 10).toUpperCase();
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
+

@@ -1,49 +1,55 @@
 import { prisma } from "@/lib/prisma";
 import { generateCode } from "@/utils/generateCode";
 
-export async function generateReferral(address: string, type: 'twitter' | 'telegram') {
-  const user = await prisma.user.findUnique({ 
-    where: { address }, 
-    include: { progress: true } 
+export async function generateReferral(address: string) {
+  const user = await prisma.user.findUnique({
+    where: { address },
+    include: { progress: true },
   });
-  
+
   if (!user || !user.progress) {
     throw new Error("User not found");
   }
 
-  const { twitterId, telegramUsername } = user.progress;
-
-  // Validate based on selected type
-  if (type === 'twitter' && !twitterId) {
-    throw new Error("Twitter verification required");
+  // ✅ If referral code already exists, reuse it
+  if (user.progress.referralCode) {
+    const referralLink = `${process.env.NEXTAUTH_URL}/?ref=${user.progress.referralCode}`;
+    return {
+      referralCode: user.progress.referralCode,
+      referralLink,
+    };
   }
 
-  if (type === 'telegram' && !telegramUsername) {
-    throw new Error("Telegram verification required");
+  // ✅ Generate a unique referral code
+  let referralCode = "";
+  let isUnique = false;
+
+  while (!isUnique) {
+    referralCode = generateCode();
+
+    const existing = await prisma.userProgress.findFirst({
+      where: { referralCode },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      isUnique = true;
+    }
   }
 
-  // Generate referral code
-  const referralCode = generateCode();
-  
-  // Update database - refState: 3 means COMPLETED
-  await prisma.userProgress.update({ 
-    where: { userId: user.id }, 
-    data: { 
-      referralCode, 
-      refState: 3  // Changed from 1 to 3
-    } 
+  // ✅ Save the referral code to DB (refState: 3 = COMPLETED)
+  await prisma.userProgress.update({
+    where: { userId: user.id },
+    data: {
+      referralCode,
+      refState: 3,
+    },
   });
 
-  // Choose username based on type
-  const username = type === 'twitter' ? twitterId : telegramUsername;
-  
-  // Build referral link
-  const referralLink = `${process.env.NEXTAUTH_URL}/${username}/${referralCode}`;
+  const referralLink = `${process.env.NEXTAUTH_URL}/?ref=${referralCode}`;
 
   return {
     referralCode,
     referralLink,
-    type,
-    username,
   };
 }

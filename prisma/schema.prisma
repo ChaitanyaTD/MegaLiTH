@@ -14,24 +14,49 @@ model User {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   progress  UserProgress?
+  referrals Referral[]    @relation("ReferredUser")
 }
 
 model UserProgress {
-  id                  Int      @id @default(autoincrement())
-  userId              Int      @unique
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  xState              Int      @default(1)
-  xVerified           Boolean  @default(false)
-  tgState             Int      @default(0)
-  refState            Int      @default(0)
-  referralCode        String?
-  twitterId           String?  @unique
+  id                  Int        @id @default(autoincrement())
+  userId              Int        @unique
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xState              Int        @default(1)
+  xVerified           Boolean    @default(false)
+  tgState             Int        @default(0)
+  refState            Int        @default(0)
+  referralCode        String?    @unique
+  twitterId           String?    @unique
   twitterUserId       String?
   telegramId          BigInt?
   telegramUsername    String?
   twitterRefreshToken String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  referredUsers       Referral[] @relation("ReferrerProgress")
 
   @@index([xState, xVerified])
+  @@index([referralCode])
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([address])
+}
+
+model Referral {
+  id         String       @id @default(cuid())
+  userId     Int
+  referrerId Int
+  createdAt  DateTime     @default(now())
+  user       User         @relation("ReferredUser", fields: [userId], references: [id], onDelete: Cascade)
+  referrer   UserProgress @relation("ReferrerProgress", fields: [referrerId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, referrerId])
+  @@index([referrerId])
+  @@index([createdAt])
 }
