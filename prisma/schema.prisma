@@ -15,6 +15,7 @@ model User {
   updatedAt DateTime      @updatedAt
   progress  UserProgress?
   referrals Referral[]    @relation("ReferredUser")
+  boost     UserBoost?
 }
 
 model UserProgress {
@@ -59,4 +60,22 @@ model Referral {
   @@unique([userId, referrerId])
   @@index([referrerId])
   @@index([createdAt])
+}
+
+model UserBoost {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bnbBalance        String   @default("0")
+  asterBalance      String   @default("0")
+  kiltBalance       String   @default("0")
+  boostCoefficient  Float    @default(1.0)
+  hasBnbBoost       Boolean  @default(false)
+  hasAsterBoost     Boolean  @default(false)
+  hasKiltBoost      Boolean  @default(false)
+  lastUpdated       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([boostCoefficient])
 }

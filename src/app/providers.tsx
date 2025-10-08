@@ -10,13 +10,13 @@ import {
 } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { base } from "wagmi/chains";
+import { base, bsc } from "wagmi/chains";
 import "@rainbow-me/rainbowkit/styles.css";
 
 const config = getDefaultConfig({
   appName: "Megalith",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || "demo",
-  chains: [base],
+  chains: [base, bsc],
   ssr: true,
 });
 

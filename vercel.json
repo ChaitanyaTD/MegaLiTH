@@ -3,6 +3,10 @@
     {
       "path": "/api/twitter/verify",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/boost/refresh",
+      "schedule": "0 * * * *"
     }
   ]
 }

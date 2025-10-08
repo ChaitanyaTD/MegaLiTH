@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import KiltBalance from "@/components/KiltBalance";
 import { useProgress } from "@/hooks/useProgress";
+import { useBoost } from "@/hooks/useBoost";
 import ReferralInviteModal from "@/components/InviteRefferalModal";
 import TaskButtons from "@/app/dashboard/TaskButtons";
 
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data, isFetched } = useProgress();
+  const { data: boostData, calculateBoost, isCalculating } = useBoost();
   const didInitRef = useRef(false);
   const [userReady, setUserReady] = useState(false);
   const [referralLink, setReferralLink] = useState<string | null>(null);
@@ -50,6 +52,14 @@ export default function Dashboard() {
               const refLink = `${window.location.origin}/?ref=${existing.progress.referralCode}`;
               setReferralLink(refLink);
             }
+            // Silently compute and store boost on login
+            try {
+              await fetch("/api/boost/calculate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ address }),
+              });
+            } catch (_) {}
             return;
           }
           const r = await fetch("/api/user", {
@@ -57,7 +67,17 @@ export default function Dashboard() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ address }),
           });
-          if (r.ok) setUserReady(true);
+          if (r.ok) {
+            setUserReady(true);
+            // After creating user, compute and store boost
+            try {
+              await fetch("/api/boost/calculate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ address }),
+              });
+            } catch (_) {}
+          }
         })
         .catch(() => {});
     }
@@ -96,27 +116,56 @@ export default function Dashboard() {
 
         <div className="max-w-6xl mx-auto grid gap-8">
           <section>
-            <h2 className="heading text-2xl font-semibold">Genesis Drop</h2>
-            <div className="mt-4 grid sm:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm opacity-80 mb-1">KILT balance</label>
-                <div className="w-full card rounded-md p-3 font-mono">
-                  <KiltBalance />
+            <h2 className="heading text-2xl font-semibold">Holder Boost</h2>
+            <div className="mt-4 p-6 bg-gradient-to-r from-orange-50 to-blue-50 dark:from-orange-900/20 dark:to-blue-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 mb-2">Boost Tokens</h3>
+                  <div className="flex items-center space-x-4 mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-center"><img src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" /></div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-center"><img src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" /></div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-center"><img src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" /></div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Hold these tokens to get boost multipliers</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-semibold flex items-center">
+                    {boostData?.boostCoefficient && boostData.boostCoefficient > 1.0 ? (
+                      <>
+                        <span className="mr-2">✅</span>
+                        <span className="text-green-600 dark:text-green-400">Boost tokens detected</span>
+                      </>
+                    ) : boostData?.hasBnbTokens || boostData?.hasAsterTokens || boostData?.hasKiltTokens ? (
+                      <>
+                        <span className="mr-2">⚠️</span>
+                        <span className="text-yellow-600 dark:text-yellow-400">Tokens held, below minimum</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="mr-2">❌</span>
+                        <span className="text-red-600 dark:text-red-400">No boost tokens</span>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={calculateBoost}
+                    disabled={isCalculating}
+                    className="mt-2 text-xs text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200 disabled:opacity-50"
+                  >
+                    {isCalculating ? "Checking..." : "Check Boost"}
+                  </button>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm opacity-80 mb-1">M1 allocation</label>
-                <input
-                  className="w-full card rounded-md p-3 font-mono"
-                  value={"34,420.00"}
-                  readOnly
-                />
-              </div>
             </div>
-            <p className="mt-4 opacity-80 text-sm">
-              The snapshot is scheduled for Block 3482000 around 12:00 on October 20th, 2025.
-            </p>
           </section>
+
+         
 
           <section className="mt-10">
             <h2 className="heading text-2xl font-semibold">Alliance Drop</h2>
