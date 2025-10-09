@@ -48,12 +48,16 @@ export async function GET(req: NextRequest) {
   if (error) {
     const errorDescription = req.nextUrl.searchParams.get("error_description");
     console.error('Twitter OAuth error:', error, errorDescription);
-    
+
+    const friendly = error === "access_denied"
+      ? "User rejected X access."
+      : (errorDescription || error);
+
     const redirectUrl = buildRedirectUrl("/dashboard", {
       twitter_result: "error",
-      toast_message: errorDescription || error
+      toast_message: friendly
     });
-    
+
     return Response.redirect(new URL(redirectUrl, req.url));
   }
   
