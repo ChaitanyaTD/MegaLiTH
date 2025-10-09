@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export type TwitterTokenResponse = {
   token_type: string;
@@ -283,14 +284,25 @@ export async function markTwitterPendingVerification(
     updateData.twitterRefreshToken = refreshToken;
   }
 
-  return prisma.userProgress.upsert({
-    where: { userId: user.id },
-    update: updateData,
-    create: {
-      userId: user.id,
-      ...updateData,
-    },
-  });
+  try {
+    return await prisma.userProgress.upsert({
+      where: { userId: user.id },
+      update: updateData,
+      create: {
+        userId: user.id,
+        ...updateData,
+      },
+    });
+  } catch (err: unknown) {
+    // Translate unique constraint on twitterId into a user-friendly error
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const target = Array.isArray((err as any).meta?.target) ? (err as any).meta?.target : undefined;
+      if (target && target.includes("twitterId")) {
+        throw new Error("This X account has already registered.");
+      }
+    }
+    throw err;
+  }
 }
 
 // === Get Twitter username by ID ===
