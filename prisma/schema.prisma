@@ -69,13 +69,10 @@ model UserBoost {
   bnbBalance        String   @default("0")
   asterBalance      String   @default("0")
   kiltBalance       String   @default("0")
-  boostCoefficient  Float    @default(1.0)
   hasBnbBoost       Boolean  @default(false)
   hasAsterBoost     Boolean  @default(false)
   hasKiltBoost      Boolean  @default(false)
   lastUpdated       DateTime @default(now())
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
-
-  @@index([boostCoefficient])
 }

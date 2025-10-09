@@ -66,33 +66,8 @@ export async function POST(req: NextRequest) {
     const asterBalanceWei = typeof asterBalance === 'bigint' ? asterBalance : BigInt(asterBalance);
     const kiltBalanceWei = typeof kiltBalance === 'bigint' ? kiltBalance : BigInt(kiltBalance);
 
-    // Calculate boost coefficient
+    // Calculate boost coefficient (computed on-demand; not persisted)
     const boostResult = calculateBoostCoefficient(bnbBalanceWei, asterBalanceWei, kiltBalanceWei);
-    
-    // Upsert user boost data with string values
-    const userBoost = await prisma.userBoost.upsert({
-      where: { userId: user.id },
-      update: {
-        bnbBalance: bnbBalanceWei.toString(),
-        asterBalance: asterBalanceWei.toString(),
-        kiltBalance: kiltBalanceWei.toString(),
-        boostCoefficient: boostResult.boostCoefficient,
-        hasBnbBoost: boostResult.hasBnbBoost,
-        hasAsterBoost: boostResult.hasAsterBoost,
-        hasKiltBoost: boostResult.hasKiltBoost,
-        lastUpdated: new Date(),
-      },
-      create: {
-        userId: user.id,
-        bnbBalance: bnbBalanceWei.toString(),
-        asterBalance: asterBalanceWei.toString(),
-        kiltBalance: kiltBalanceWei.toString(),
-        boostCoefficient: boostResult.boostCoefficient,
-        hasBnbBoost: boostResult.hasBnbBoost,
-        hasAsterBoost: boostResult.hasAsterBoost,
-        hasKiltBoost: boostResult.hasKiltBoost,
-      },
-    });
 
     // Format balances for response
     const bnbBalanceFormatted = Number(formatUnits(bnbBalanceWei, BNB_DECIMALS));
@@ -123,7 +98,7 @@ export async function POST(req: NextRequest) {
             formatted: kiltBalanceFormatted,
           },
         },
-        lastUpdated: userBoost.lastUpdated,
+        lastUpdated: null,
       },
     });
   } catch (error) {
@@ -151,12 +126,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Find user by address
-    const user = await prisma.user.findUnique({
-      where: { address },
-      include: { boost: true },
-    });
-
+    // Find user by address (ensures address exists in system)
+    const user = await prisma.user.findUnique({ where: { address } });
     if (!user) {
       return NextResponse.json(
         { error: "User not found" },
@@ -164,61 +135,49 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    if (!user.boost) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          boostCoefficient: 1.0,
-          hasBnbBoost: false,
-          hasAsterBoost: false,
-          hasKiltBoost: false,
-          hasBnbTokens: false,
-          hasAsterTokens: false,
-          hasKiltTokens: false,
-          balances: {
-            bnb: { wei: "0", formatted: 0 },
-            aster: { wei: "0", formatted: 0 },
-            kilt: { wei: "0", formatted: 0 },
-          },
-          lastUpdated: null,
-        },
-      });
-    }
+    // Live compute balances and boost (no persistence)
+    const [bnbBalance, asterBalance, kiltBalance] = await Promise.all([
+      bscClient.getBalance({ address: address as `0x${string}` }),
+      bscClient.readContract({
+        address: ASTER_BNB_CHAIN_ADDRESS,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address as `0x${string}`],
+      }),
+      baseClient.readContract({
+        address: KILT_BASE_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address as `0x${string}`],
+      }),
+    ]);
 
-    // Format balances for response with null checks
-    const bnbBalance = BigInt(user.boost.bnbBalance || "0");
-    const asterBalance = BigInt(user.boost.asterBalance || "0");
-    const kiltBalance = BigInt(user.boost.kiltBalance || "0");
-    
-    const bnbBalanceFormatted = Number(formatUnits(bnbBalance, BNB_DECIMALS));
-    const asterBalanceFormatted = Number(formatUnits(asterBalance, ASTER_DECIMALS));
-    const kiltBalanceFormatted = Number(formatUnits(kiltBalance, KILT_DECIMALS));
+    const bnbBalanceWei = typeof bnbBalance === 'bigint' ? bnbBalance : BigInt(bnbBalance);
+    const asterBalanceWei = typeof asterBalance === 'bigint' ? asterBalance : BigInt(asterBalance);
+    const kiltBalanceWei = typeof kiltBalance === 'bigint' ? kiltBalance : BigInt(kiltBalance);
+
+    const boostResult = calculateBoostCoefficient(bnbBalanceWei, asterBalanceWei, kiltBalanceWei);
+
+    const bnbBalanceFormatted = Number(formatUnits(bnbBalanceWei, BNB_DECIMALS));
+    const asterBalanceFormatted = Number(formatUnits(asterBalanceWei, ASTER_DECIMALS));
+    const kiltBalanceFormatted = Number(formatUnits(kiltBalanceWei, KILT_DECIMALS));
 
     return NextResponse.json({
       success: true,
       data: {
-        boostCoefficient: user.boost.boostCoefficient || 1.0,
-        hasBnbBoost: user.boost.hasBnbBoost || false,
-        hasAsterBoost: user.boost.hasAsterBoost || false,
-        hasKiltBoost: user.boost.hasKiltBoost || false,
-        hasBnbTokens: bnbBalance > 0,
-        hasAsterTokens: asterBalance > 0,
-        hasKiltTokens: kiltBalance > 0,
+        boostCoefficient: boostResult.boostCoefficient,
+        hasBnbBoost: boostResult.hasBnbBoost,
+        hasAsterBoost: boostResult.hasAsterBoost,
+        hasKiltBoost: boostResult.hasKiltBoost,
+        hasBnbTokens: boostResult.hasBnbTokens,
+        hasAsterTokens: boostResult.hasAsterTokens,
+        hasKiltTokens: boostResult.hasKiltTokens,
         balances: {
-          bnb: {
-            wei: bnbBalance.toString(),
-            formatted: bnbBalanceFormatted,
-          },
-          aster: {
-            wei: asterBalance.toString(),
-            formatted: asterBalanceFormatted,
-          },
-          kilt: {
-            wei: kiltBalance.toString(),
-            formatted: kiltBalanceFormatted,
-          },
+          bnb: { wei: bnbBalanceWei.toString(), formatted: bnbBalanceFormatted },
+          aster: { wei: asterBalanceWei.toString(), formatted: asterBalanceFormatted },
+          kilt: { wei: kiltBalanceWei.toString(), formatted: kiltBalanceFormatted },
         },
-        lastUpdated: user.boost.lastUpdated,
+        lastUpdated: null,
       },
     });
   } catch (error) {
