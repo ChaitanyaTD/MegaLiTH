@@ -82,7 +82,7 @@ export default function Providers({ children }: { children: ReactNode }) {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         {mounted ? (
-          <RainbowKitProvider theme={rkTheme} coolMode>
+          <RainbowKitProvider theme={rkTheme}>
             {children}
           </RainbowKitProvider>
         ) : (

@@ -39,8 +39,9 @@ export default function RootLayout({
             <div className="flex items-center space-x-3">
               <ThemeToggle />
               <ConnectButton 
-                accountStatus={{ smallScreen: "avatar", largeScreen: "full" }} 
-                showBalance={{ largeScreen: true, smallScreen: false }} 
+                accountStatus={{ smallScreen: "address", largeScreen: "full" }}
+                showBalance={{ largeScreen: true, smallScreen: false }}
+                chainStatus={{ smallScreen: "icon", largeScreen: "icon" }}
               />
             </div>
           </header>
