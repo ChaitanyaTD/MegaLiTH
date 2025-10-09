@@ -28,12 +28,12 @@ export default function Dashboard() {
     if (ref) setRefCodeFromURL(ref);
   }, [searchParams]);
 
-  // Show referral modal
+  // ✅ Show referral modal once wallet is connected
   useEffect(() => {
-    if (refCodeFromURL && isConnected && !hasProcessedReferral) {
+    if (isConnected && refCodeFromURL && !hasProcessedReferral) {
       setShowReferralModal(true);
     }
-  }, [refCodeFromURL, isConnected, hasProcessedReferral]);
+  }, [isConnected, refCodeFromURL, hasProcessedReferral]);
 
   // Fetch or create user
   useEffect(() => {
@@ -97,6 +97,7 @@ export default function Dashboard() {
       throw new Error(error.error || "Failed to redeem referral code");
     }
     setHasProcessedReferral(true);
+    setShowReferralModal(false);
   };
 
   const handleCopyReferralLink = () => {
@@ -120,31 +121,39 @@ export default function Dashboard() {
             <div className="mt-4 p-6 bg-gradient-to-r from-orange-50 to-blue-50 dark:from-orange-900/20 dark:to-blue-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 mb-2">Boost Tokens</h3>
+                  <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 mb-2">
+                    Boost Tokens
+                  </h3>
                   <div className="flex items-center space-x-4 mb-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center justify-center"><img src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" /></div>
+                    <div className="flex items-center justify-center">
+                      <img src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" />
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center justify-center"><img src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" /></div>
+                    <div className="flex items-center justify-center">
+                      <img src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" />
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center justify-center"><img src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" /></div>
+                    <div className="flex items-center justify-center">
+                      <img src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" />
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Hold these tokens to get boost multipliers</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Hold these tokens to get boost multipliers
+                  </p>
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-semibold flex items-center">
                     {boostData?.boostCoefficient && boostData.boostCoefficient > 1.0 ? (
                       <>
                         <span className="mr-2">✅</span>
-                        <span className="text-green-600 dark:text-green-400">Boost tokens detected</span>
+                        <span className="text-green-600 dark:text-green-400">
+                          Boost tokens detected
+                        </span>
                       </>
                     ) : boostData?.hasBnbTokens || boostData?.hasAsterTokens || boostData?.hasKiltTokens ? (
                       <>
                         <span className="mr-2">⚠️</span>
-                        <span className="text-yellow-600 dark:text-yellow-400">Tokens held, below minimum</span>
+                        <span className="text-yellow-600 dark:text-yellow-400">
+                          Tokens held, below minimum
+                        </span>
                       </>
                     ) : (
                       <>
@@ -164,8 +173,6 @@ export default function Dashboard() {
               </div>
             </div>
           </section>
-
-         
 
           <section className="mt-10">
             <h2 className="heading text-2xl font-semibold">Alliance Drop</h2>
