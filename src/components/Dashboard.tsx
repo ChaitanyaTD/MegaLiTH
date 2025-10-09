@@ -3,11 +3,12 @@
 import { useAccount } from "wagmi";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import KiltBalance from "@/components/KiltBalance";
+// import KiltBalance from "@/components/KiltBalance";
 import { useProgress } from "@/hooks/useProgress";
 import { useBoost } from "@/hooks/useBoost";
 import ReferralInviteModal from "@/components/InviteRefferalModal";
 import TaskButtons from "@/app/dashboard/TaskButtons";
+import Image from "next/image";
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
@@ -59,7 +60,9 @@ export default function Dashboard() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ address }),
               });
-            } catch (_) {}
+            } catch (error) {
+              console.error("Failed to calculate boost after login", { address, error });
+            }
             return;
           }
           const r = await fetch("/api/user", {
@@ -76,10 +79,14 @@ export default function Dashboard() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ address }),
               });
-            } catch (_) {}
+            } catch (error) {
+              console.error("Failed to calculate boost after user creation", { address, error });
+            }
           }
         })
-        .catch(() => {});
+        .catch((error) => {
+          console.error("Failed to fetch or create user", { address, error });
+        });
     }
   }, [isConnected, router, isFetched, data, address]);
 
@@ -126,13 +133,13 @@ export default function Dashboard() {
                   </h3>
                   <div className="flex items-center space-x-4 mb-3">
                     <div className="flex items-center justify-center">
-                      <img src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" />
+                      <Image src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" />
                     </div>
                     <div className="flex items-center justify-center">
-                      <img src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" />
+                      <Image src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" />
                     </div>
                     <div className="flex items-center justify-center">
-                      <img src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" />
+                      <Image src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" />
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -175,7 +182,7 @@ export default function Dashboard() {
           </section>
 
           <section className="mt-10">
-            <h2 className="heading text-2xl font-semibold">Alliance Drop</h2>
+            <h2 className="heading text-2xl font-semibold">Genesis Drop</h2>
             <TaskButtons disabled={!userReady} setReferralLink={setReferralLink} />
 
             {referralLink && (

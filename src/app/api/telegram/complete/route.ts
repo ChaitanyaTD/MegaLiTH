@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { telegramId, username, firstName, lastName } = await req.json();
+    const { telegramId, username } = await req.json();
     
     if (!telegramId) {
       return new Response(JSON.stringify({ success: false, message: "telegramId required" }), { 

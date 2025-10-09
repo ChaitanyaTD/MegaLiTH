@@ -5,6 +5,7 @@ import Providers from "./providers";
 import ThemeToggle from "./components/ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Toaster } from 'react-hot-toast';
+import Image from "next/image";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,8 +33,8 @@ export default function RootLayout({
         <Providers>
           <header className="p-6 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <img src="/assets/megalith-wordmark-ob.png" alt="Megalith" className="h-8 logo-light" />
-              <img src="/assets/megalith-wordmark-ow.png" alt="Megalith" className="h-8 logo-dark" />
+              <Image src="/assets/megalith-wordmark-ob.png" alt="Megalith" className="h-8 logo-light" />
+              <Image src="/assets/megalith-wordmark-ow.png" alt="Megalith" className="h-8 logo-dark" />
             </div>
             <div className="flex items-center space-x-3">
               <ThemeToggle />

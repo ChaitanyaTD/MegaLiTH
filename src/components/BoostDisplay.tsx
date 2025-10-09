@@ -1,7 +1,7 @@
 "use client";
 
 import { useBoost } from "@/hooks/useBoost";
-import { formatBoostPercentage, getBoostDescription } from "@/services/boostService";
+import { getBoostDescription } from "@/services/boostService";
 
 export default function BoostDisplay({ className }: { className?: string }) {
   const { data, isLoading, isError, calculateBoost, isCalculating } = useBoost();
@@ -29,7 +29,6 @@ export default function BoostDisplay({ className }: { className?: string }) {
     );
   }
 
-  const boostPercentage = formatBoostPercentage(data.boostCoefficient);
   const boostDescription = getBoostDescription(data.boostCoefficient);
 
   return (
