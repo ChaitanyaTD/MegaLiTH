@@ -133,13 +133,13 @@ export default function Dashboard() {
                   </h3>
                   <div className="flex items-center space-x-4 mb-3">
                     <div className="flex items-center justify-center">
-                      <Image src="/assets/BNB Logo.png" alt="BNB" className="w-10 h-10" />
+                      <Image src="/assets/BNB Logo.png" alt="BNB" width={40} height={40} className="w-10 h-10" />
                     </div>
                     <div className="flex items-center justify-center">
-                      <Image src="/assets/ASTER Logo.png" alt="ASTER" className="w-10 h-10" />
+                      <Image src="/assets/ASTER Logo.png" alt="ASTER" width={40} height={40} className="w-10 h-10" />
                     </div>
                     <div className="flex items-center justify-center">
-                      <Image src="/assets/kilt-logo.png" alt="KILT" className="w-10 h-10" />
+                      <Image src="/assets/kilt-logo.png" alt="KILT" width={40} height={40} className="w-10 h-10" />
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">

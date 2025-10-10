@@ -33,8 +33,22 @@ export default function RootLayout({
         <Providers>
           <header className="p-6 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Image src="/assets/megalith-wordmark-ob.png" alt="Megalith" className="h-8 logo-light" />
-              <Image src="/assets/megalith-wordmark-ow.png" alt="Megalith" className="h-8 logo-dark" />
+              <Image
+                src="/assets/megalith-wordmark-ob.png"
+                alt="Megalith"
+                width={160}
+                height={32}
+                priority
+                className="h-8 w-auto logo-light"
+              />
+              <Image
+                src="/assets/megalith-wordmark-ow.png"
+                alt="Megalith"
+                width={160}
+                height={32}
+                priority
+                className="h-8 w-auto logo-dark"
+              />
             </div>
             <div className="flex items-center space-x-3">
               <ThemeToggle />

@@ -27,6 +27,138 @@ interface Stats {
   averageReferralsPerUser: string;
 }
 
+interface CompleteUser {
+  id: number;
+  address: string;
+  createdAt: string;
+  updatedAt: string;
+  progress?: {
+    id: number;
+    userId: number;
+    xState: number;
+    xVerified: boolean;
+    tgState: number;
+    refState: number;
+    referralCode?: string;
+    twitterId?: string;
+    twitterUserId?: string;
+    telegramId?: string;
+    telegramUsername?: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  boost?: {
+    id: number;
+    userId: number;
+    bnbBalance: string;
+    asterBalance: string;
+    kiltBalance: string;
+    hasBnbBoost: boolean;
+    hasAsterBoost: boolean;
+    hasKiltBoost: boolean;
+    lastUpdated: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  referrals: Array<{
+    id: string;
+    userId: number;
+    referrerId: number;
+    createdAt: string;
+  }>;
+}
+
+interface CompleteUserProgress {
+  id: number;
+  userId: number;
+  xState: number;
+  xVerified: boolean;
+  tgState: number;
+  refState: number;
+  referralCode?: string;
+  twitterId?: string;
+  twitterUserId?: string;
+  telegramId?: string;
+  telegramUsername?: string;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    address: string;
+  };
+  referredUsers: Array<{
+    id: string;
+    userId: number;
+    referrerId: number;
+    createdAt: string;
+    user: {
+      address: string;
+    };
+  }>;
+}
+
+interface CompleteUserBoost {
+  id: number;
+  userId: number;
+  bnbBalance: string;
+  asterBalance: string;
+  kiltBalance: string;
+  hasBnbBoost: boolean;
+  hasAsterBoost: boolean;
+  hasKiltBoost: boolean;
+  lastUpdated: string;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    address: string;
+  };
+}
+
+interface CompleteReferral {
+  id: string;
+  userId: number;
+  referrerId: number;
+  createdAt: string;
+  user: {
+    address: string;
+  };
+  referrer: {
+    userId: number;
+    referralCode?: string;
+    user: {
+      address: string;
+    };
+  };
+}
+
+interface CompleteAdmin {
+  id: string;
+  address: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CompleteExportData {
+  users: CompleteUser[];
+  userProgress: CompleteUserProgress[];
+  userBoosts: CompleteUserBoost[];
+  referrals: CompleteReferral[];
+  admins: CompleteAdmin[];
+}
+
+interface CompleteStats {
+  totalUsers: number;
+  totalUserProgress: number;
+  totalUserBoosts: number;
+  totalReferrals: number;
+  totalAdmins: number;
+  usersWithReferralCodes: number;
+  usersWithTwitter: number;
+  usersWithTelegram: number;
+  usersWithBoosts: number;
+  averageReferralsPerUser: string;
+  exportTimestamp: string;
+}
+
 export default function AdminDashboard() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -144,6 +276,192 @@ export default function AdminDashboard() {
     XLSX.writeFile(workbook, `referrals-detailed-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const downloadAllDataXLSX = async () => {
+    if (!isConnected || !address) {
+      setError('Please connect your wallet to download data.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/export-all', {
+        headers: { 'x-wallet-address': address },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch complete data');
+      }
+
+      const result = await response.json();
+      const { data, stats }: { data: CompleteExportData; stats: CompleteStats } = result;
+
+      // Helper function to safely format dates
+      const formatDate = (dateValue: any): string => {
+        if (!dateValue) return 'No Date';
+        
+        // If it's already a Date object
+        if (dateValue instanceof Date) {
+          return isNaN(dateValue.getTime()) ? 'Invalid Date' : dateValue.toLocaleString();
+        }
+        
+        // If it's a string (ISO string from API), try to parse it
+        if (typeof dateValue === 'string') {
+          try {
+            const date = new Date(dateValue);
+            return isNaN(date.getTime()) ? `Invalid String: ${dateValue}` : date.toLocaleString();
+          } catch {
+            return `Parse Error: ${dateValue}`;
+          }
+        }
+        
+        // If it's a number (timestamp)
+        if (typeof dateValue === 'number') {
+          try {
+            const date = new Date(dateValue);
+            return isNaN(date.getTime()) ? `Invalid Number: ${dateValue}` : date.toLocaleString();
+          } catch {
+            return `Number Error: ${dateValue}`;
+          }
+        }
+        
+        // For any other type, try to convert to string and then parse
+        try {
+          const date = new Date(String(dateValue));
+          return isNaN(date.getTime()) ? `Invalid Type: ${typeof dateValue} - ${String(dateValue)}` : date.toLocaleString();
+        } catch {
+          return `Type Error: ${typeof dateValue} - ${String(dateValue)}`;
+        }
+      };
+
+      // Create workbook with multiple sheets
+      const workbook = XLSX.utils.book_new();
+
+      // 1. Users Sheet
+      const usersData = data.users.map(user => ({
+        'ID': user.id,
+        'Address': user.address,
+        'Created At': formatDate(user.createdAt),
+        'Updated At': formatDate(user.updatedAt),
+        'Has Progress': !!user.progress,
+        'Has Boost': !!user.boost,
+        'Total Referrals': user.referrals.length,
+        'Referral Code': user.progress?.referralCode || '',
+        'X State': user.progress?.xState || '',
+        'X Verified': user.progress?.xVerified || false,
+        'TG State': user.progress?.tgState || '',
+        'Ref State': user.progress?.refState || '',
+        'Twitter ID': user.progress?.twitterId || '',
+        'Twitter User ID': user.progress?.twitterUserId || '',
+        'Telegram ID': user.progress?.telegramId || '',
+        'Telegram Username': user.progress?.telegramUsername || '',
+        'BNB Balance': user.boost?.bnbBalance || '',
+        'Aster Balance': user.boost?.asterBalance || '',
+        'KILT Balance': user.boost?.kiltBalance || '',
+        'Has BNB Boost': user.boost?.hasBnbBoost || false,
+        'Has Aster Boost': user.boost?.hasAsterBoost || false,
+        'Has KILT Boost': user.boost?.hasKiltBoost || false,
+        'Boost Last Updated': formatDate(user.boost?.lastUpdated)
+      }));
+
+      const usersSheet = XLSX.utils.json_to_sheet(usersData);
+      XLSX.utils.book_append_sheet(workbook, usersSheet, 'All Users');
+
+      // 2. User Progress Sheet
+      const progressData = data.userProgress.map(progress => ({
+        'ID': progress.id,
+        'User ID': progress.userId,
+        'User Address': progress.user.address,
+        'X State': progress.xState,
+        'X Verified': progress.xVerified,
+        'TG State': progress.tgState,
+        'Ref State': progress.refState,
+        'Referral Code': progress.referralCode || '',
+        'Twitter ID': progress.twitterId || '',
+        'Twitter User ID': progress.twitterUserId || '',
+        'Telegram ID': progress.telegramId || '',
+        'Telegram Username': progress.telegramUsername || '',
+        'Created At': formatDate(progress.createdAt),
+        'Updated At': formatDate(progress.updatedAt),
+        'Total Referrals': progress.referredUsers.length
+      }));
+
+      const progressSheet = XLSX.utils.json_to_sheet(progressData);
+      XLSX.utils.book_append_sheet(workbook, progressSheet, 'User Progress');
+
+      // 3. User Boosts Sheet
+      const boostsData = data.userBoosts.map(boost => ({
+        'ID': boost.id,
+        'User ID': boost.userId,
+        'User Address': boost.user.address,
+        'BNB Balance': boost.bnbBalance,
+        'Aster Balance': boost.asterBalance,
+        'KILT Balance': boost.kiltBalance,
+        'Has BNB Boost': boost.hasBnbBoost,
+        'Has Aster Boost': boost.hasAsterBoost,
+        'Has KILT Boost': boost.hasKiltBoost,
+        'Last Updated': formatDate(boost.lastUpdated),
+        'Created At': formatDate(boost.createdAt),
+        'Updated At': formatDate(boost.updatedAt)
+      }));
+
+      const boostsSheet = XLSX.utils.json_to_sheet(boostsData);
+      XLSX.utils.book_append_sheet(workbook, boostsSheet, 'User Boosts');
+
+      // 4. Referrals Sheet
+      const referralsData = data.referrals.map(referral => ({
+        'ID': referral.id,
+        'User ID': referral.userId,
+        'Referred User Address': referral.user.address,
+        'Referrer ID': referral.referrerId,
+        'Referrer Address': referral.referrer.user.address,
+        'Referral Code': referral.referrer.referralCode || '',
+        'Created At': formatDate(referral.createdAt)
+      }));
+
+      const referralsSheet = XLSX.utils.json_to_sheet(referralsData);
+      XLSX.utils.book_append_sheet(workbook, referralsSheet, 'All Referrals');
+
+      // 5. Admins Sheet
+      const adminsData = data.admins.map(admin => ({
+        'ID': admin.id,
+        'Address': admin.address,
+        'Created At': formatDate(admin.createdAt),
+        'Updated At': formatDate(admin.updatedAt)
+      }));
+
+      const adminsSheet = XLSX.utils.json_to_sheet(adminsData);
+      XLSX.utils.book_append_sheet(workbook, adminsSheet, 'Admins');
+
+      // 6. Statistics Sheet
+      const statisticsData = [
+        { Metric: 'Total Users', Value: stats.totalUsers },
+        { Metric: 'Total User Progress Records', Value: stats.totalUserProgress },
+        { Metric: 'Total User Boosts', Value: stats.totalUserBoosts },
+        { Metric: 'Total Referrals', Value: stats.totalReferrals },
+        { Metric: 'Total Admins', Value: stats.totalAdmins },
+        { Metric: 'Users with Referral Codes', Value: stats.usersWithReferralCodes },
+        { Metric: 'Users with Twitter', Value: stats.usersWithTwitter },
+        { Metric: 'Users with Telegram', Value: stats.usersWithTelegram },
+        { Metric: 'Users with Boosts', Value: stats.usersWithBoosts },
+        { Metric: 'Average Referrals Per User', Value: stats.averageReferralsPerUser },
+        { Metric: 'Export Timestamp', Value: stats.exportTimestamp }
+      ];
+
+      const statisticsSheet = XLSX.utils.json_to_sheet(statisticsData);
+      XLSX.utils.book_append_sheet(workbook, statisticsSheet, 'Statistics');
+
+      // Download the file
+      const timestamp = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(workbook, `complete-database-export-${timestamp}.xlsx`);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download complete data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
@@ -214,13 +532,23 @@ export default function AdminDashboard() {
                 className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
-            <button
-              onClick={viewMode === 'overview' ? downloadOverviewXLSX : downloadDetailedXLSX}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
-            >
-              <Download size={18} />
-              Download Excel
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={viewMode === 'overview' ? downloadOverviewXLSX : downloadDetailedXLSX}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
+              >
+                <Download size={18} />
+                Download {viewMode === 'overview' ? 'Overview' : 'Detailed'}
+              </button>
+              <button
+                onClick={downloadAllDataXLSX}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white rounded-lg font-medium transition"
+              >
+                <Download size={18} />
+                {loading ? 'Exporting...' : 'Download All'}
+              </button>
+            </div>
           </div>
         </div>
 
